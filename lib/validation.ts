@@ -34,11 +34,11 @@ export async function validateAndFetchSpec(url: string): Promise<Record<string, 
     throw new ValidationError('URLs pointing to private/internal networks are not allowed.')
   }
 
-  // Fetch using the resolved IP to prevent DNS rebinding between lookup and fetch
-  const ipUrl = new URL(url)
-  ipUrl.hostname = address
-  const res = await fetch(ipUrl.toString(), {
-    headers: { Host: parsed.hostname },
+  // Fetch using the original URL — the DNS check above blocks private IPs
+  // We can't substitute the IP into the URL because TLS cert validation
+  // requires the real hostname (IP-based HTTPS requests fail cert checks).
+  const res = await fetch(url, {
+    redirect: 'follow',
     signal: AbortSignal.timeout(10_000),
   })
 

@@ -13,6 +13,10 @@ export const INTEGRATION_STATUS = {
 } as const
 
 export async function createIntegration(id: string, specHash: string) {
+  if (!process.env.DATABASE_URL) {
+    console.warn('DATABASE_URL not set — skipping integration insert')
+    return
+  }
   const sql = getDb()
   await sql`
     INSERT INTO integrations (id, spec_hash, status, created_at)

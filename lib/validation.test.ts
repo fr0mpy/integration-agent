@@ -112,15 +112,13 @@ describe('validateAndFetchSpec', () => {
     await expect(validateAndFetchSpec('not-a-url')).rejects.toThrow()
   })
 
-  it('fetches using resolved IP to prevent DNS rebinding', async () => {
+  it('fetches using original URL after DNS validation', async () => {
     const spec = { openapi: '3.0.0' }
     mockFetch.mockResolvedValueOnce(jsonResponse(spec))
 
     await validateAndFetchSpec('https://example.com/spec.json')
 
-    const fetchedUrl = mockFetch.mock.calls[0][0]
-
-    expect(fetchedUrl).toContain('93.184.216.34')
-    expect(mockFetch.mock.calls[0][1].headers.Host).toBe('example.com')
+    expect(mockLookup).toHaveBeenCalledWith('example.com')
+    expect(mockFetch.mock.calls[0][0]).toBe('https://example.com/spec.json')
   })
 })

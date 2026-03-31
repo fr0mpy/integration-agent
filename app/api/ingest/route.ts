@@ -23,10 +23,12 @@ const bodySchema = z.object({
 export async function POST(req: Request) {
   try {
     const ip = req.headers.get('x-real-ip') ?? 'anonymous'
-    const { success: allowed } = await ratelimit.limit(ip)
 
-    if (!allowed) {
-      return errors.tooManyRequests()
+    try {
+      const { success: allowed } = await ratelimit.limit(ip)
+      if (!allowed) return errors.tooManyRequests()
+    } catch {
+      // Redis unavailable — skip rate limiting rather than blocking all requests
     }
 
     const body = await req.json()
