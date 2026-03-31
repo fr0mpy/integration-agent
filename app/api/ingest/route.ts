@@ -1,12 +1,7 @@
 import { createHash, randomUUID } from 'crypto'
 import { z } from 'zod'
 import { Ratelimit } from '@upstash/ratelimit'
-import {
-  getCachedConfig,
-  getCachedSpecHash,
-  setCachedSpecHash,
-} from '@/lib/storage/redis'
-import { redis } from '@/lib/storage/redis'
+import { redis, urlCache, configCache, specCache } from '@/lib/storage/redis'
 import { createIntegration } from '@/lib/storage/neon'
 import { validateAndFetchSpec, ValidationError } from '@/lib/validation'
 import { success, errors } from '@/lib/api/response'
@@ -22,23 +17,25 @@ const bodySchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const ip = req.headers.get('x-real-ip') ?? 'anonymous'
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+      ?? req.headers.get('x-real-ip')
+      ?? 'anonymous'
 
     try {
       const { success: allowed } = await ratelimit.limit(ip)
       if (!allowed) return errors.tooManyRequests()
-    } catch {
-      // Redis unavailable — skip rate limiting rather than blocking all requests
+    } catch (err) {
+      console.warn('Rate limit check failed:', err instanceof Error ? err.message : 'unknown')
     }
 
     const body = await req.json()
     const { specUrl } = bodySchema.parse(body)
 
     // Fast path: check cache before doing any DNS/network work
-    const knownHash = await getCachedSpecHash(specUrl)
+    const knownHash = await urlCache.getHash(specUrl)
 
     if (knownHash) {
-      const cached = await getCachedConfig(knownHash)
+      const cached = await configCache.get(knownHash)
 
       if (cached) {
         const integrationId = randomUUID()
@@ -55,9 +52,12 @@ export async function POST(req: Request) {
       .digest('hex')
 
     // Cache the URL → hash mapping for future fast-path lookups
-    await setCachedSpecHash(specUrl, specHash)
+    await urlCache.setHash(specUrl, specHash)
 
-    const cached = await getCachedConfig(specHash)
+    // Store raw spec so the pipeline can retrieve it by hash
+    await specCache.set(specHash, spec)
+
+    const cached = await configCache.get(specHash)
     const integrationId = randomUUID()
     await createIntegration(integrationId, specHash)
 
@@ -66,7 +66,7 @@ export async function POST(req: Request) {
       cached: cached !== null,
     })
   } catch (err) {
-    console.error('Ingest error:', err)
+    console.error('Ingest error:', err instanceof Error ? err.message : 'unknown')
 
     if (err instanceof z.ZodError) {
       return errors.badRequest(err.errors.map((e) => e.message).join(', '))

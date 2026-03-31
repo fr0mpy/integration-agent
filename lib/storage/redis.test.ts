@@ -16,83 +16,83 @@ describe('redis storage', () => {
     return import('./redis')
   }
 
-  it('returns cached value on cache hit', async () => {
-    const { redis, getCachedConfig } = await loadRedis()
+  it('configCache.get returns cached value on hit', async () => {
+    const { redis, configCache } = await loadRedis()
     const mockData = { endpoints: ['/users'] }
     vi.mocked(redis.get).mockResolvedValueOnce(mockData)
 
-    const result = await getCachedConfig('abc123')
+    const result = await configCache.get('abc123')
     expect(result).toEqual(mockData)
     expect(redis.get).toHaveBeenCalledWith('cache:abc123')
   })
 
-  it('returns null on cache miss', async () => {
-    const { redis, getCachedConfig } = await loadRedis()
+  it('configCache.get returns null on miss', async () => {
+    const { redis, configCache } = await loadRedis()
     vi.mocked(redis.get).mockResolvedValueOnce(null)
 
-    const result = await getCachedConfig('missing')
+    const result = await configCache.get('missing')
     expect(result).toBeNull()
   })
 
-  it('returns null and logs on Redis failure', async () => {
-    const { redis, getCachedConfig } = await loadRedis()
+  it('configCache.get returns null and logs on failure', async () => {
+    const { redis, configCache } = await loadRedis()
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.mocked(redis.get).mockRejectedValueOnce(new Error('connection refused'))
 
-    const result = await getCachedConfig('fail')
+    const result = await configCache.get('fail')
     expect(result).toBeNull()
-    expect(warnSpy).toHaveBeenCalledWith('Redis cache read failed:', expect.any(Error))
+    expect(warnSpy).toHaveBeenCalledWith('Redis config read failed:', 'connection refused')
     warnSpy.mockRestore()
   })
 
-  it('setCachedConfig swallows errors', async () => {
-    const { redis, setCachedConfig } = await loadRedis()
+  it('configCache.set swallows errors', async () => {
+    const { redis, configCache } = await loadRedis()
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.mocked(redis.set).mockRejectedValueOnce(new Error('write failed'))
 
-    await expect(setCachedConfig('key', { data: true })).resolves.toBeUndefined()
-    expect(warnSpy).toHaveBeenCalledWith('Redis cache write failed:', expect.any(Error))
+    await expect(configCache.set('key', { data: true })).resolves.toBeNull()
+    expect(warnSpy).toHaveBeenCalledWith('Redis config write failed:', 'write failed')
     warnSpy.mockRestore()
   })
 
-  it('getCachedSpecHash returns hash on hit', async () => {
-    const { redis, getCachedSpecHash } = await loadRedis()
+  it('urlCache.getHash returns hash on hit', async () => {
+    const { redis, urlCache } = await loadRedis()
     vi.mocked(redis.get).mockResolvedValueOnce('abc123hash')
 
-    const result = await getCachedSpecHash('https://example.com/spec.json')
+    const result = await urlCache.getHash('https://example.com/spec.json')
 
     expect(result).toBe('abc123hash')
     expect(redis.get).toHaveBeenCalledWith('url:https://example.com/spec.json')
   })
 
-  it('getCachedSpecHash returns null on miss', async () => {
-    const { redis, getCachedSpecHash } = await loadRedis()
+  it('urlCache.getHash returns null on miss', async () => {
+    const { redis, urlCache } = await loadRedis()
     vi.mocked(redis.get).mockResolvedValueOnce(null)
 
-    const result = await getCachedSpecHash('https://unknown.com/spec.json')
+    const result = await urlCache.getHash('https://unknown.com/spec.json')
 
     expect(result).toBeNull()
   })
 
-  it('getCachedSpecHash swallows errors', async () => {
-    const { redis, getCachedSpecHash } = await loadRedis()
+  it('urlCache.getHash swallows errors', async () => {
+    const { redis, urlCache } = await loadRedis()
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.mocked(redis.get).mockRejectedValueOnce(new Error('timeout'))
 
-    const result = await getCachedSpecHash('https://fail.com/spec.json')
+    const result = await urlCache.getHash('https://fail.com/spec.json')
 
     expect(result).toBeNull()
-    expect(warnSpy).toHaveBeenCalledWith('Redis URL cache read failed:', expect.any(Error))
+    expect(warnSpy).toHaveBeenCalledWith('Redis URL cache read failed:', 'timeout')
     warnSpy.mockRestore()
   })
 
-  it('setCachedSpecHash swallows errors', async () => {
-    const { redis, setCachedSpecHash } = await loadRedis()
+  it('urlCache.setHash swallows errors', async () => {
+    const { redis, urlCache } = await loadRedis()
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     vi.mocked(redis.set).mockRejectedValueOnce(new Error('write failed'))
 
-    await expect(setCachedSpecHash('https://fail.com/spec.json', 'hash')).resolves.toBeUndefined()
-    expect(warnSpy).toHaveBeenCalledWith('Redis URL cache write failed:', expect.any(Error))
+    await expect(urlCache.setHash('https://fail.com/spec.json', 'hash')).resolves.toBeNull()
+    expect(warnSpy).toHaveBeenCalledWith('Redis URL cache write failed:', 'write failed')
     warnSpy.mockRestore()
   })
 })

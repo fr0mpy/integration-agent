@@ -38,7 +38,7 @@ export async function validateAndFetchSpec(url: string): Promise<Record<string, 
   // We can't substitute the IP into the URL because TLS cert validation
   // requires the real hostname (IP-based HTTPS requests fail cert checks).
   const res = await fetch(url, {
-    redirect: 'follow',
+    redirect: 'error',
     signal: AbortSignal.timeout(10_000),
   })
 
@@ -59,7 +59,13 @@ export async function validateAndFetchSpec(url: string): Promise<Record<string, 
     throw new ValidationError('Spec file is too large (max 10MB).')
   }
 
-  const spec = JSON.parse(text) as Record<string, unknown>
+  let spec: Record<string, unknown>
+
+  try {
+    spec = JSON.parse(text) as Record<string, unknown>
+  } catch {
+    throw new ValidationError('Response is not valid JSON.')
+  }
 
   if (!spec.openapi && !spec.swagger) {
     throw new ValidationError('The provided URL does not appear to be an OpenAPI spec.')
