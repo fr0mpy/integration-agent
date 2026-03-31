@@ -9,5 +9,6 @@ node_modules/
 *.log
 .vercel
 .env*.local
+tsconfig.tsbuildinfo
 # next-agents-md
 .next-docs/
