@@ -52,6 +52,18 @@ export const configCache = {
   },
 }
 
+export const discoveryCache = {
+  get(specHash: string) {
+    return safeRedis('discovery read', () => redis.get(`discovery:${specHash}`))
+  },
+
+  set(specHash: string, discovery: unknown) {
+    return safeRedis('discovery write', () =>
+      redis.set(`discovery:${specHash}`, discovery, { ex: CACHE_TTL_SECONDS }),
+    )
+  },
+}
+
 export const specCache = {
   get(specHash: string) {
     return safeRedis('spec read', () =>

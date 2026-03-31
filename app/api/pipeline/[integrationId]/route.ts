@@ -1,6 +1,6 @@
 import { getRun } from 'workflow/api'
 import { getIntegration } from '@/lib/storage/neon'
-import { configCache } from '@/lib/storage/redis'
+import { configCache, discoveryCache } from '@/lib/storage/redis'
 import type { PipelineEvent } from '@/lib/pipeline/events'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -14,7 +14,7 @@ const SSE_HEADERS = {
 /** Send a single SSE error event and close the stream. */
 function sseError(message: string): Response {
   const event: PipelineEvent = {
-    stage: 'discover',
+    stage: 'discover-api',
     status: 'failed',
     data: { error: message },
     timestamp: Date.now(),
@@ -49,13 +49,16 @@ export async function GET(
     // Cached path: return config as JSON (no workflow involved)
     if (url.searchParams.get('cached') === 'true') {
       const specHash = integration.spec_hash as string
-      const config = await configCache.get(specHash)
+      const [config, discovery] = await Promise.all([
+        configCache.get(specHash),
+        discoveryCache.get(specHash),
+      ])
 
       if (!config) {
         return Response.json({ error: 'Cached config not found.' }, { status: 404 })
       }
 
-      return Response.json({ config })
+      return Response.json({ config, discovery: discovery ?? null })
     }
 
     // Poll for run_id — handles race where workflow start hasn't written it yet

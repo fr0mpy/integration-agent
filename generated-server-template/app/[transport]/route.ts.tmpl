@@ -1,0 +1,36 @@
+import { createMcpHandler } from 'mcp-handler'
+import { z } from 'zod'
+
+const BASE_URL = process.env.MCP_BASE_URL ?? ''
+const CREDENTIAL_ENDPOINT = process.env.CREDENTIAL_ENDPOINT ?? ''
+const HMAC_SECRET = process.env.HMAC_SECRET ?? ''
+const INTEGRATION_ID = process.env.INTEGRATION_ID ?? ''
+
+const handler = createMcpHandler((server) => {
+  // TOOLS_PLACEHOLDER
+})
+
+export { handler as GET, handler as POST, handler as DELETE }
+
+async function fetchCredentials(token: string | undefined): Promise<{ apiKey: string }> {
+  if (!CREDENTIAL_ENDPOINT || !INTEGRATION_ID) {
+    return { apiKey: token ?? '' }
+  }
+  const sig = await createHmacSignature(HMAC_SECRET, INTEGRATION_ID)
+  const res = await fetch(
+    `${CREDENTIAL_ENDPOINT}/api/credentials?integrationId=${INTEGRATION_ID}`,
+    { headers: { 'x-hmac-signature': sig, 'x-integration-id': INTEGRATION_ID } },
+  )
+  if (!res.ok) return { apiKey: token ?? '' }
+  const data = await res.json() as { apiKey?: string }
+  return { apiKey: data.apiKey ?? token ?? '' }
+}
+
+async function createHmacSignature(secret: string, message: string): Promise<string> {
+  const enc = new TextEncoder()
+  const key = await crypto.subtle.importKey(
+    'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  )
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message))
+  return Buffer.from(sig).toString('hex')
+}

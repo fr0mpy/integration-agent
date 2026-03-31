@@ -9,7 +9,7 @@ const BLOCKED_IP_RANGES = [
   /^0\./, // 0.0.0.0/8
 ]
 
-function isPrivateIP(ip: string): boolean {
+export function isPrivateIP(ip: string): boolean {
   if (ip === '::1' || ip === '::') return true
   return BLOCKED_IP_RANGES.some((range) => range.test(ip))
 }

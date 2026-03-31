@@ -27,11 +27,17 @@
       "failIntegration": {
         "stepId": "step//./lib/pipeline/index//failIntegration"
       },
+      "runCodegen": {
+        "stepId": "step//./lib/pipeline/index//runCodegen"
+      },
       "runDiscovery": {
         "stepId": "step//./lib/pipeline/index//runDiscovery"
       },
       "runSynthesis": {
         "stepId": "step//./lib/pipeline/index//runSynthesis"
+      },
+      "runValidateSandbox": {
+        "stepId": "step//./lib/pipeline/index//runValidateSandbox"
       },
       "setIntegrationStatus": {
         "stepId": "step//./lib/pipeline/index//setIntegrationStatus"

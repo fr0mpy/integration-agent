@@ -12,7 +12,7 @@ export const INTEGRATION_STATUS = {
   FAILED: 'failed',
 } as const
 
-export async function createIntegration(id: string, specHash: string): Promise<boolean> {
+export async function createIntegration(id: string, specHash: string, specUrl: string): Promise<boolean> {
   if (!process.env.DATABASE_URL) {
     console.warn('DATABASE_URL not set — skipping integration insert')
     return false
@@ -21,8 +21,8 @@ export async function createIntegration(id: string, specHash: string): Promise<b
   try {
     const sql = getDb()
     await sql`
-      INSERT INTO integrations (id, spec_hash, status, created_at)
-      VALUES (${id}, ${specHash}, ${INTEGRATION_STATUS.PENDING}, NOW())
+      INSERT INTO integrations (id, spec_hash, spec_url, status, created_at)
+      VALUES (${id}, ${specHash}, ${specUrl}, ${INTEGRATION_STATUS.PENDING}, NOW())
     `
     return true
   } catch (err) {
@@ -84,17 +84,50 @@ export async function updateIntegration(
   }
 }
 
+export interface IntegrationSummary {
+  id: string
+  spec_url: string | null
+  status: string
+  run_id: string | null
+  created_at: string
+}
+
+export async function listIntegrations(limit = 20): Promise<IntegrationSummary[]> {
+  if (!process.env.DATABASE_URL) {
+    console.warn('DATABASE_URL not set — skipping integration list')
+    return []
+  }
+
+  try {
+    const sql = getDb()
+    const rows = await sql<IntegrationSummary[]>`
+      SELECT id, spec_url, status, run_id, created_at
+      FROM integrations
+      ORDER BY created_at DESC
+      LIMIT ${limit}
+    `
+    return rows
+  } catch (err) {
+    console.error('Neon query failed (listIntegrations):', err instanceof Error ? err.message : 'unknown')
+    return []
+  }
+}
+
 /** SQL to create the integrations table — run once during setup */
 export const CREATE_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS integrations (
     id TEXT PRIMARY KEY,
     spec_hash TEXT NOT NULL,
+    spec_url TEXT,
     status TEXT NOT NULL DEFAULT 'pending',
     mcp_url TEXT,
     deployment_id TEXT,
     run_id TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
+
+  -- Migration: add spec_url if it doesn't exist yet
+  ALTER TABLE integrations ADD COLUMN IF NOT EXISTS spec_url TEXT;
 
   CREATE TABLE IF NOT EXISTS credentials (
     integration_id TEXT PRIMARY KEY REFERENCES integrations(id),

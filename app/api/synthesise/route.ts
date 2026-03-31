@@ -19,7 +19,8 @@ const bodySchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+    const ip = req.headers.get('x-vercel-forwarded-for')
+      ?? req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
       ?? req.headers.get('x-real-ip')
       ?? 'anonymous'
 
@@ -41,7 +42,8 @@ export async function POST(req: Request) {
 
       if (cached) {
         const integrationId = randomUUID()
-        await createIntegration(integrationId, knownHash)
+        const cachedOk = await createIntegration(integrationId, knownHash, specUrl)
+        if (!cachedOk) return errors.internal()
         return success({ integrationId, cached: true })
       }
     }
@@ -57,7 +59,8 @@ export async function POST(req: Request) {
     await specCache.set(specHash, spec)
 
     const integrationId = randomUUID()
-    await createIntegration(integrationId, specHash)
+    const created = await createIntegration(integrationId, specHash, specUrl)
+    if (!created) return errors.internal()
 
     // Start the durable workflow pipeline
     // URL cache is written inside the pipeline only after successful synthesis

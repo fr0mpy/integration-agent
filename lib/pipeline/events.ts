@@ -1,19 +1,34 @@
 import type { DiscoveryResult } from './discover'
 import type { MCPServerConfig, MCPToolDefinition } from '../mcp/types'
 
-export type PipelineStage = 'discover' | 'synthesise' | 'validate' | 'sandbox' | 'deploy'
+export type PipelineStage = 'discover-api' | 'build-mcp' | 'preview-mcp' | 'deploy-mcp' | 'health-check'
 
 export type PipelineStatus =
   | 'running'
   | 'complete'
   | 'failed'
   | 'tool_complete'
-  | 'tool_validated'
+  | 'building'
+
+export interface ValidateEventData {
+  sourceCode?: string
+  buildLog?: string
+  sandboxUrl?: string
+  verifiedTools?: string[]
+  toolCount?: number
+  errors?: string
+}
 
 export interface PipelineEvent {
   stage: PipelineStage
   status: PipelineStatus
-  data: DiscoveryResult | MCPServerConfig | MCPToolDefinition | { error: string } | null
+  data:
+    | DiscoveryResult
+    | MCPServerConfig
+    | MCPToolDefinition
+    | ValidateEventData
+    | { error: string }
+    | null
   timestamp: number
 }
 
