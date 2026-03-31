@@ -62,7 +62,8 @@ describe('redis storage', () => {
     const result = await urlCache.getHash('https://example.com/spec.json')
 
     expect(result).toBe('abc123hash')
-    expect(redis.get).toHaveBeenCalledWith('url:https://example.com/spec.json')
+    // URL is now hashed before use as Redis key
+    expect(redis.get).toHaveBeenCalledWith(expect.stringMatching(/^url:[a-f0-9]{64}$/))
   })
 
   it('urlCache.getHash returns null on miss', async () => {

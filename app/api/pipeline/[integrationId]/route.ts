@@ -1,52 +1,113 @@
+import { getRun } from 'workflow/api'
 import { getIntegration } from '@/lib/storage/neon'
-import { specCache, configCache } from '@/lib/storage/redis'
-import { discoverEndpoints, enrichDiscovery } from '@/lib/pipeline/discover'
-import { success, error, errors } from '@/lib/api/response'
+import { configCache } from '@/lib/storage/redis'
+import type { PipelineEvent } from '@/lib/pipeline/events'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+const SSE_HEADERS = {
+  'Content-Type': 'text/event-stream',
+  'Cache-Control': 'no-cache',
+  Connection: 'keep-alive',
+} as const
+
+/** Send a single SSE error event and close the stream. */
+function sseError(message: string): Response {
+  const event: PipelineEvent = {
+    stage: 'discover',
+    status: 'failed',
+    data: { error: message },
+    timestamp: Date.now(),
+  }
+  const body = `data: ${JSON.stringify(event)}\n\n`
+  return new Response(body, { headers: SSE_HEADERS })
+}
+
+/**
+ * GET: Connect (or reconnect) to a running pipeline's stream.
+ * Always returns text/event-stream so EventSource can handle errors gracefully.
+ */
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ integrationId: string }> },
 ) {
   try {
     const { integrationId } = await params
 
     if (!UUID_RE.test(integrationId)) {
-      return errors.badRequest('Invalid integration ID.')
+      return sseError('Invalid integration ID.')
     }
 
     const integration = await getIntegration(integrationId)
 
     if (!integration) {
-      return error('Integration not found.', 404)
+      return sseError('Integration not found.')
     }
 
-    const specHash = integration.spec_hash as string
+    const url = new URL(req.url)
 
-    // Fast path: return cached discovery result
-    const cached = await configCache.get(specHash)
+    // Cached path: return config as JSON (no workflow involved)
+    if (url.searchParams.get('cached') === 'true') {
+      const specHash = integration.spec_hash as string
+      const config = await configCache.get(specHash)
 
-    if (cached) {
-      return success(cached)
+      if (!config) {
+        return Response.json({ error: 'Cached config not found.' }, { status: 404 })
+      }
+
+      return Response.json({ config })
     }
 
-    // Slow path: fetch spec, run discovery + enrichment
-    const spec = await specCache.get(specHash)
+    // Poll for run_id — handles race where workflow start hasn't written it yet
+    let runId = integration.run_id as string | null
 
-    if (!spec) {
-      return error('Spec not found — it may have expired.', 404)
+    if (!runId) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await new Promise((r) => setTimeout(r, 1000))
+        const updated = await getIntegration(integrationId)
+        runId = (updated?.run_id as string | null) ?? null
+        if (runId) break
+      }
+
+      if (!runId) {
+        return sseError('Pipeline failed to start. Please try again.')
+      }
     }
 
-    const raw = await discoverEndpoints(spec)
-    const result = await enrichDiscovery(raw)
+    // Support reconnection from a specific index
+    const lastIndexParam = url.searchParams.get('lastIndex')
+    let startIndex = 0
 
-    // Cache for future requests
-    await configCache.set(specHash, result)
+    if (lastIndexParam !== null) {
+      const parsed = parseInt(lastIndexParam, 10)
+      if (!Number.isInteger(parsed) || parsed < 0) {
+        return sseError('Invalid lastIndex parameter.')
+      }
+      startIndex = parsed + 1
+    }
 
-    return success(result)
+    const run = getRun(runId)
+    const readable = run.getReadable<PipelineEvent>({ startIndex })
+
+    // Transform workflow chunks into SSE format
+    const encoder = new TextEncoder()
+    const sseStream = readable.pipeThrough(
+      new TransformStream<PipelineEvent, Uint8Array>({
+        transform(event, controller) {
+          try {
+            const data = JSON.stringify(event)
+            controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+          } catch (err) {
+            console.error('SSE transform error:', err instanceof Error ? err.message : 'unknown')
+            controller.error(err)
+          }
+        },
+      }),
+    )
+
+    return new Response(sseStream, { headers: SSE_HEADERS })
   } catch (err) {
-    console.error('Pipeline error:', err instanceof Error ? err.message : 'unknown')
-    return errors.internal()
+    console.error('Pipeline stream error:', err instanceof Error ? err.message : 'unknown')
+    return sseError('Pipeline stream failed. Please try again.')
   }
 }

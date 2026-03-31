@@ -164,7 +164,8 @@ export async function enrichDiscovery(
       groups,
     }
   } catch (err) {
-    result.warnings.push(`Enrichment failed: ${err instanceof Error ? err.message : 'unknown'} — using raw discovery`)
+    console.error('Enrichment failed:', err instanceof Error ? err.message : 'unknown')
+    result.warnings.push('Enrichment failed — using raw discovery results')
     return result
   }
 }
@@ -185,7 +186,8 @@ export async function discoverEndpoints(spec: Record<string, unknown>): Promise<
       { dereference: { circular: 'ignore' } },
     ) as Record<string, unknown>
   } catch (err) {
-    warnings.push(`$ref dereferencing failed: ${err instanceof Error ? err.message : 'unknown error'}`)
+    console.error('$ref dereferencing failed:', err instanceof Error ? err.message : 'unknown')
+    warnings.push('$ref resolution failed — some schema references may be unresolved')
   }
 
   const info = (resolved.info ?? {}) as Record<string, unknown>

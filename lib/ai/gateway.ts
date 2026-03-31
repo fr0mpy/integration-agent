@@ -12,14 +12,14 @@ export function buildTags(
   integrationName: string,
   stage: 'discover' | 'synthesis' | 'validation' | 'config-ui' | 'eval',
   extra?: string
-): Record<string, string> {
-  const tags: Record<string, string> = {
-    integration: integrationName,
-    stage,
-  }
+): string[] {
+  const tags: string[] = [
+    `integration:${integrationName}`,
+    `stage:${stage}`,
+  ]
 
   if (extra) {
-    tags.detail = extra
+    tags.push(`detail:${extra}`)
   }
 
   return tags

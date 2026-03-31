@@ -457,7 +457,7 @@ describe('enrichDiscovery', () => {
 
     const enriched = await enrichDiscovery(result)
     expect(enriched.endpoints).toEqual(result.endpoints)
-    expect(enriched.warnings).toContain('Enrichment failed: API key missing — using raw discovery')
+    expect(enriched.warnings).toContain('Enrichment failed — using raw discovery results')
   })
 
   it('merges LLM enrichment back into endpoints', async () => {

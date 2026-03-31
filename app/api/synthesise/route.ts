@@ -2,9 +2,11 @@ import { createHash, randomUUID } from 'crypto'
 import { z } from 'zod'
 import { Ratelimit } from '@upstash/ratelimit'
 import { redis, urlCache, configCache, specCache } from '@/lib/storage/redis'
-import { createIntegration } from '@/lib/storage/neon'
+import { createIntegration, updateIntegration } from '@/lib/storage/neon'
 import { validateAndFetchSpec, ValidationError } from '@/lib/validation'
 import { success, errors } from '@/lib/api/response'
+import { start } from 'workflow/api'
+import { synthesisePipeline } from '@/lib/pipeline'
 
 const ratelimit = new Ratelimit({
   redis,
@@ -12,7 +14,7 @@ const ratelimit = new Ratelimit({
 })
 
 const bodySchema = z.object({
-  specUrl: z.string().url('Provide a valid specUrl.'),
+  specUrl: z.string().url('Provide a valid specUrl.').max(2048, 'URL too long (max 2048 chars).'),
 })
 
 export async function POST(req: Request) {
@@ -51,22 +53,24 @@ export async function POST(req: Request) {
       .update(JSON.stringify(spec))
       .digest('hex')
 
-    // Cache the URL → hash mapping for future fast-path lookups
-    await urlCache.setHash(specUrl, specHash)
-
     // Store raw spec so the pipeline can retrieve it by hash
     await specCache.set(specHash, spec)
 
-    const cached = await configCache.get(specHash)
     const integrationId = randomUUID()
     await createIntegration(integrationId, specHash)
 
+    // Start the durable workflow pipeline
+    // URL cache is written inside the pipeline only after successful synthesis
+    const run = await start(synthesisePipeline, [integrationId, spec, specHash, specUrl])
+    await updateIntegration(integrationId, { run_id: run.runId })
+
     return success({
       integrationId,
-      cached: cached !== null,
+      runId: run.runId,
+      cached: false,
     })
   } catch (err) {
-    console.error('Ingest error:', err instanceof Error ? err.message : 'unknown')
+    console.error('Synthesise error:', err instanceof Error ? err.message : 'unknown')
 
     if (err instanceof z.ZodError) {
       return errors.badRequest(err.errors.map((e) => e.message).join(', '))

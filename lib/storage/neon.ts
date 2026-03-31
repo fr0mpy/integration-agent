@@ -12,10 +12,10 @@ export const INTEGRATION_STATUS = {
   FAILED: 'failed',
 } as const
 
-export async function createIntegration(id: string, specHash: string) {
+export async function createIntegration(id: string, specHash: string): Promise<boolean> {
   if (!process.env.DATABASE_URL) {
     console.warn('DATABASE_URL not set — skipping integration insert')
-    return
+    return false
   }
 
   try {
@@ -24,8 +24,10 @@ export async function createIntegration(id: string, specHash: string) {
       INSERT INTO integrations (id, spec_hash, status, created_at)
       VALUES (${id}, ${specHash}, ${INTEGRATION_STATUS.PENDING}, NOW())
     `
+    return true
   } catch (err) {
     console.error('Neon query failed (createIntegration):', err instanceof Error ? err.message : 'unknown')
+    return false
   }
 }
 
@@ -50,10 +52,10 @@ export async function getIntegration(id: string) {
 export async function updateIntegration(
   id: string,
   updates: { status?: string; mcp_url?: string; deployment_id?: string; run_id?: string }
-) {
+): Promise<boolean> {
   if (!process.env.DATABASE_URL) {
     console.warn('DATABASE_URL not set — skipping integration update')
-    return
+    return false
   }
 
   try {
@@ -74,8 +76,11 @@ export async function updateIntegration(
     if (updates.run_id !== undefined) {
       await sql`UPDATE integrations SET run_id = ${updates.run_id} WHERE id = ${id}`
     }
+
+    return true
   } catch (err) {
     console.error('Neon query failed (updateIntegration):', err instanceof Error ? err.message : 'unknown')
+    return false
   }
 }
 

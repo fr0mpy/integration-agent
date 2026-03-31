@@ -1,8 +1,16 @@
+import { createHash } from 'crypto'
 import { Redis } from '@upstash/redis'
 
+const redisUrl = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL
+const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN
+
+if (!redisUrl || !redisToken) {
+  console.error('Redis env vars not configured (UPSTASH_REDIS_REST_URL / KV_REST_API_URL)')
+}
+
 export const redis = new Redis({
-  url: (process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL)!,
-  token: (process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN)!,
+  url: redisUrl ?? '',
+  token: redisToken ?? '',
 })
 
 const CACHE_TTL_SECONDS = 60 * 60 * 24 * 30 // 30 days
@@ -16,14 +24,18 @@ async function safeRedis<T>(label: string, fn: () => Promise<T>): Promise<T | nu
   }
 }
 
+function hashUrl(specUrl: string): string {
+  return createHash('sha256').update(specUrl).digest('hex')
+}
+
 export const urlCache = {
   getHash(specUrl: string) {
-    return safeRedis('URL cache read', () => redis.get<string>(`url:${specUrl}`))
+    return safeRedis('URL cache read', () => redis.get<string>(`url:${hashUrl(specUrl)}`))
   },
 
   setHash(specUrl: string, specHash: string) {
     return safeRedis('URL cache write', () =>
-      redis.set(`url:${specUrl}`, specHash, { ex: CACHE_TTL_SECONDS }),
+      redis.set(`url:${hashUrl(specUrl)}`, specHash, { ex: CACHE_TTL_SECONDS }),
     )
   },
 }
