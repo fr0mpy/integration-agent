@@ -17,8 +17,10 @@ export function buildTags(
     integration: integrationName,
     stage,
   }
+
   if (extra) {
     tags.detail = extra
   }
+
   return tags
 }

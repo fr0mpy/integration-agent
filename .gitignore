@@ -2,4 +2,8 @@ node_modules/
 .next/
 .env
 .env.local
+.env.*.local
 .claude/
+.vercel/
+.DS_Store
+*.log

@@ -6,7 +6,8 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
+    "test": "vitest run",
     "eval": "tsx evals/run.ts"
   },
   "dependencies": {
@@ -20,15 +21,17 @@
     "@ai-sdk/react": "^3.0.143",
     "zod": "^3.25.17",
     "mcp-handler": "^1.1.0",
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "1.26.0",
     "@json-render/core": "^0.16.0",
     "@json-render/react": "^0.16.0",
+    "@vercel/blob": "^2.3.2",
     "@vercel/sdk": "^1.19.11",
-"@upstash/redis": "^1.37.0",
+    "@vercel/sandbox": "^1.9.0",
+    "@upstash/redis": "^1.37.0",
+    "@upstash/ratelimit": "^2.0.5",
     "@neondatabase/serverless": "^1.0.2",
     "workflow": "4.2.0-beta.74",
-    "@workflow/ai": "4.1.0-beta.59",
-    "@vercel/sandbox": "^1.9.0"
+    "@workflow/ai": "4.1.0-beta.59"
   },
   "devDependencies": {
     "typescript": "^6.0.2",
@@ -40,6 +43,7 @@
     "postcss": "^8.5.0",
     "eslint": "^9.0.0",
     "eslint-config-next": "16.2.1",
-    "tsx": "^4.0.0"
+    "tsx": "^4.0.0",
+    "vitest": "^3.2.1"
   }
 }
