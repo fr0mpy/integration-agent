@@ -32,9 +32,8 @@ export function SpecInput() {
         throw new Error(data.error || `Request failed (${res.status})`)
       }
 
-      const { integrationId, cached } = await res.json()
-      const query = cached ? '?cached=true' : ''
-      router.push(`/integrate/${integrationId}${query}`)
+      const { integrationId } = await res.json()
+      router.push(`/integrate/${integrationId}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {

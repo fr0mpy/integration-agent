@@ -8,17 +8,18 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { ToolCard } from '@/components/pipeline/ToolCard'
+import { ValidatePanel } from '@/components/pipeline/ValidatePanel'
 import { methodColors, authStyles } from '@/lib/ui/badges'
 import { cn } from '@/lib/utils'
 import type { DiscoveryResult, DiscoveredEndpoint } from '@/lib/pipeline/discover'
 import type { PipelineStage } from '@/lib/pipeline/events'
 
 const STAGES: { key: PipelineStage; label: string }[] = [
-  { key: 'discover', label: 'Discover' },
-  { key: 'synthesise', label: 'Synthesise' },
-  { key: 'validate', label: 'Validate' },
-  { key: 'sandbox', label: 'Sandbox' },
-  { key: 'deploy', label: 'Deploy' },
+  { key: 'discover-api', label: 'Discover API' },
+  { key: 'build-mcp', label: 'Generated Tools' },
+  { key: 'preview-mcp', label: 'Preview MCP' },
+  { key: 'deploy-mcp', label: 'Deploy MCP' },
+  { key: 'health-check', label: 'Health Check' },
 ]
 
 const STATUS_ICONS: Record<string, string> = {
@@ -31,7 +32,7 @@ const VALID_STAGES = new Set<string>(STAGES.map((s) => s.key))
 
 function parseTabParam(value: string | null): PipelineStage {
   if (value && VALID_STAGES.has(value)) return value as PipelineStage
-  return 'discover'
+  return 'discover-api'
 }
 
 export function PipelineView({ integrationId, cached = false }: { integrationId: string; cached?: boolean }) {
@@ -152,9 +153,9 @@ export function PipelineView({ integrationId, cached = false }: { integrationId:
         </div>
       )}
 
-      {/* Discover */}
-      <TabsContent value="discover" className="mt-4 space-y-4">
-        <StagePanel status={state.stageStatus.discover} error={state.error} stage="discover">
+      {/* Discover API */}
+      <TabsContent value="discover-api" className="mt-4 space-y-4">
+        <StagePanel status={state.stageStatus['discover-api']} error={state.error} stage="discover-api">
           {state.discovery && (
             <>
               <HeaderCard result={state.discovery} />
@@ -177,9 +178,9 @@ export function PipelineView({ integrationId, cached = false }: { integrationId:
         </StagePanel>
       </TabsContent>
 
-      {/* Synthesise */}
-      <TabsContent value="synthesise" className="mt-4 space-y-4">
-        <StagePanel status={state.stageStatus.synthesise} error={state.error} stage="synthesise">
+      {/* Build MCP */}
+      <TabsContent value="build-mcp" className="mt-4 space-y-4">
+        <StagePanel status={state.stageStatus['build-mcp']} error={state.error} stage="build-mcp">
           {state.tools.length > 0 && (
             <>
               <h2 className="text-lg font-medium">
@@ -202,24 +203,31 @@ export function PipelineView({ integrationId, cached = false }: { integrationId:
         </StagePanel>
       </TabsContent>
 
-      {/* Validate */}
-      <TabsContent value="validate" className="mt-4">
-        <StagePanel status={state.stageStatus.validate} error={state.error} stage="validate">
-          <PlaceholderPanel label="Validation" />
+      {/* Preview MCP — code IDE + AI chat + build log */}
+      <TabsContent value="preview-mcp" className="mt-4">
+        <StagePanel status={state.stageStatus['preview-mcp']} error={state.error} stage="preview-mcp">
+          <ValidatePanel
+            integrationId={integrationId}
+            sandboxUrl={state.sandboxUrl}
+            sourceCode={state.sourceCode}
+            buildLog={state.buildLog}
+            verifiedTools={state.verifiedTools}
+            validateStatus={state.stageStatus['preview-mcp']}
+          />
         </StagePanel>
       </TabsContent>
 
-      {/* Sandbox */}
-      <TabsContent value="sandbox" className="mt-4">
-        <StagePanel status={state.stageStatus.sandbox} error={state.error} stage="sandbox">
-          <PlaceholderPanel label="Sandbox testing" />
-        </StagePanel>
-      </TabsContent>
-
-      {/* Deploy */}
-      <TabsContent value="deploy" className="mt-4">
-        <StagePanel status={state.stageStatus.deploy} error={state.error} stage="deploy">
+      {/* Deploy MCP */}
+      <TabsContent value="deploy-mcp" className="mt-4">
+        <StagePanel status={state.stageStatus['deploy-mcp']} error={state.error} stage="deploy-mcp">
           <PlaceholderPanel label="Deployment" />
+        </StagePanel>
+      </TabsContent>
+
+      {/* Health Check */}
+      <TabsContent value="health-check" className="mt-4">
+        <StagePanel status={state.stageStatus['health-check']} error={state.error} stage="health-check">
+          <PlaceholderPanel label="Health check" />
         </StagePanel>
       </TabsContent>
     </Tabs>

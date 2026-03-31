@@ -1,20 +1,139 @@
-import { SpecInput } from '@/components/SpecInput'
+import Link from "next/link";
+import { SpecInput } from "@/components/SpecInput";
+import { listIntegrations, type IntegrationSummary } from "@/lib/storage/neon";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 
-export default function Home() {
+export default async function Home() {
+  const integrations = await listIntegrations(10);
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center px-4">
-      <div className="w-full max-w-2xl space-y-8">
+    <main className="flex min-h-screen flex-col items-center justify-center px-4 py-16">
+      <div className="w-full max-w-2xl space-y-10">
         <div className="space-y-3 text-center">
           <h1 className="text-4xl font-bold tracking-tight">
-            IntegrationAgent
+            Integration Agent
           </h1>
           <p className="text-lg text-zinc-400">
-            Paste an OpenAPI spec URL or upload a file. Get a live MCP server
-            deployed on Vercel in under two minutes.
+            Pass in an OpenAPI spec URL and get a live MCP server deployed on
+            Vercel in under two minutes.
           </p>
         </div>
+
         <SpecInput />
+
+        {integrations.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-medium text-muted-foreground">
+              Recent pipelines
+            </h2>
+            <div className="space-y-1.5">
+              {integrations.map((integration) => (
+                <IntegrationRow
+                  key={integration.id}
+                  integration={integration}
+                />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </main>
-  )
+  );
+}
+
+function statusInfo(integration: IntegrationSummary): {
+  label: string;
+  className: string;
+  pulse: boolean;
+} {
+  switch (integration.status) {
+    case "pending":
+    case "synthesising":
+      return {
+        label: "Awaiting deployment",
+        className: "border-amber-500/50 text-amber-400",
+        pulse: true,
+      };
+    case "deploying":
+      return {
+        label: "Deploying",
+        className: "border-blue-500/50 text-blue-400",
+        pulse: true,
+      };
+    case "live":
+      return {
+        label: "Deployed",
+        className: "border-emerald-500/40 text-emerald-400",
+        pulse: false,
+      };
+    case "failed":
+      return {
+        label: "Failed",
+        className: "border-red-500/40 text-red-400",
+        pulse: false,
+      };
+    default:
+      return {
+        label: "Deployed",
+        className: "border-emerald-500/40 text-emerald-400",
+        pulse: false,
+      };
+  }
+}
+
+function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function parseSpecUrl(url: string | null): {
+  host: string | null;
+  path: string | null;
+} {
+  if (!url) return { host: null, path: null };
+  try {
+    const u = new URL(url);
+    return { host: u.hostname, path: u.pathname === "/" ? null : u.pathname };
+  } catch {
+    return { host: url, path: null };
+  }
+}
+
+function IntegrationRow({ integration }: { integration: IntegrationSummary }) {
+  const href = `/integrate/${integration.id}`;
+  const { label, className, pulse } = statusInfo(integration);
+  const { host, path } = parseSpecUrl(integration.spec_url);
+  const shortId = integration.id.slice(0, 8);
+
+  return (
+    <Card className="transition-colors hover:bg-zinc-800/50">
+      <CardContent className="flex items-center gap-3 px-4 py-2.5">
+        <Link href={href} className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-zinc-200">
+            {host ?? "Unknown source"}
+          </span>
+          <span className="block truncate font-mono text-xs text-muted-foreground">
+            {path ? `${path} · ${shortId}` : shortId}
+          </span>
+        </Link>
+
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {relativeTime(integration.created_at)}
+        </span>
+
+        <Badge
+          variant="outline"
+          className={`shrink-0 text-[10px] ${className} ${pulse ? "animate-pulse" : ""}`}
+        >
+          {label}
+        </Badge>
+      </CardContent>
+    </Card>
+  );
 }
