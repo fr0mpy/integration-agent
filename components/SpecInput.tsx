@@ -21,11 +21,12 @@ export function SpecInput() {
     setLoading(true)
 
     try {
-      const res = await fetch('/api/synthesise', {
+      const res = await fetch('/api/ingest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ specUrl: specUrl.trim() }),
       })
+
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || `Request failed (${res.status})`)
