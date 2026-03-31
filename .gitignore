@@ -9,3 +9,5 @@ node_modules/
 *.log
 .vercel
 .env*.local
+# next-agents-md
+.next-docs/
