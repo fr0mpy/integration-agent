@@ -21,7 +21,7 @@ export function SpecInput() {
     setLoading(true)
 
     try {
-      const res = await fetch('/api/ingest', {
+      const res = await fetch('/api/synthesise', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ specUrl: specUrl.trim() }),
@@ -32,8 +32,9 @@ export function SpecInput() {
         throw new Error(data.error || `Request failed (${res.status})`)
       }
 
-      const { integrationId } = await res.json()
-      router.push(`/integrate/${integrationId}`)
+      const { integrationId, cached } = await res.json()
+      const query = cached ? '?cached=true' : ''
+      router.push(`/integrate/${integrationId}${query}`)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
