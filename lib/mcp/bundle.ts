@@ -32,7 +32,11 @@ export function bundleServer(config: MCPServerConfig): BundleResult {
 
   const packageJson = PACKAGE_JSON_TMPL
   const vercelJson = VERCEL_JSON_TMPL
-  const nextConfig = NEXT_CONFIG_TMPL
+  // Embed MCP_BASE_URL into next.config.ts so it's available at build and runtime
+  const nextConfig = NEXT_CONFIG_TMPL.replace(
+    'const nextConfig: NextConfig = {}',
+    `const nextConfig: NextConfig = { env: { MCP_BASE_URL: ${JSON.stringify(config.baseUrl)} } }`,
+  )
 
   const tsConfig = JSON.stringify(
     {
@@ -61,16 +65,12 @@ export function bundleServer(config: MCPServerConfig): BundleResult {
 
   const files: BundledFile[] = [
     { file: 'app/[transport]/route.ts', data: sourceCode },
+    { file: 'app/layout.tsx', data: 'export default function RootLayout({ children }: { children: React.ReactNode }) {\n  return <html><body>{children}</body></html>\n}\n' },
     { file: 'package.json', data: packageJson },
     { file: 'vercel.json', data: vercelJson },
     { file: 'next.config.ts', data: nextConfig },
     { file: 'tsconfig.json', data: tsConfig },
   ]
-
-  // Inject the base URL as a build-time env in the package.json
-  const pkg = JSON.parse(packageJson) as { env?: Record<string, string> }
-  pkg.env = { MCP_BASE_URL: config.baseUrl }
-  files[1] = { file: 'package.json', data: JSON.stringify(pkg, null, 2) }
 
   return { files, sourceCode }
 }

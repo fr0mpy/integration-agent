@@ -68,7 +68,10 @@ export function ValidatePanel({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ credential: credential.trim() }),
       })
-      if (!res.ok) throw new Error(await res.text())
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text.slice(0, 200))
+      }
       setHasCredentials(true)
       setCredential('')
     } catch (err) {
@@ -140,26 +143,6 @@ export function ValidatePanel({
 
   return (
     <div className="space-y-4">
-
-      {/* Sandbox status banner */}
-      {sandboxUrl ? (
-        <div className="flex items-center gap-2 rounded-md border border-emerald-500/20 bg-emerald-950/20 px-3 py-2">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-          <span className="text-xs font-medium text-emerald-400">Live sandbox</span>
-          <span className="text-xs text-zinc-500">
-            —{verifiedTools.length > 0 ? ` ${verifiedTools.length} tools MCP-verified` : ' compiled, started, and MCP-verified'} in an isolated Firecracker VM
-          </span>
-        </div>
-      ) : validatedAt ? (
-        <div className="flex items-center gap-2 rounded-md border border-zinc-700/50 bg-zinc-900/40 px-3 py-2">
-          <span className="text-xs text-emerald-500">✓</span>
-          <span className="text-xs font-medium text-zinc-300">
-            {verifiedTools.length > 0 ? `${verifiedTools.length} tools MCP-verified` : 'Sandbox verified'}
-          </span>
-          <span className="text-xs text-zinc-500">{relativeTime(validatedAt)}</span>
-          <span className="text-xs text-zinc-600">— VM expired, chat inspection still available</span>
-        </div>
-      ) : null}
 
       {/* Credential input */}
       {showCredentialSection && (
@@ -266,17 +249,27 @@ export function ValidatePanel({
       </div>
 
       {/* Build log */}
-      {(sandboxBuilding || buildLog.length > 0) && (
+      {(sandboxBuilding || buildLog.length > 0 || validateStatus === 'complete') && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Build log</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
-            <pre className="max-h-48 overflow-y-auto rounded-b-lg bg-zinc-950 p-4 text-xs leading-relaxed text-zinc-400">
-              {buildLog.length > 0 ? buildLog.join('\n') : (
-                <span className="flex items-center gap-2">
+            <pre className="max-h-48 overflow-y-auto rounded-b-lg bg-zinc-950 p-4 text-xs leading-relaxed">
+              {buildLog.length > 0 ? (
+                buildLog.map((line, i) => (
+                  <span key={i} className={line.startsWith('Sandbox live') ? 'text-emerald-400' : 'text-zinc-400'}>
+                    {line}{'\n'}
+                  </span>
+                ))
+              ) : validateStatus === 'complete' ? (
+                <span className="text-zinc-400">
+                  {verifiedTools.length > 0 ? `✓ ${verifiedTools.length} tools MCP-verified` : '✓ Sandbox verified'}
+                </span>
+              ) : (
+                <span className="flex items-center gap-2 text-zinc-400">
                   <span className="inline-block h-2 w-2 animate-spin rounded-full border border-zinc-600 border-t-zinc-300" />
-                  Starting sandbox…
+                  Setting up sandbox...
                 </span>
               )}
             </pre>

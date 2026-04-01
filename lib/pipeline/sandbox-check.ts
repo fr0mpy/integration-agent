@@ -56,6 +56,8 @@ export async function runSandboxCheck(
 
   let failed = false
   try {
+    logs.push('Setting up sandbox...')
+
     // Write all generated files
     await sandbox.writeFiles(
       bundle.files.map((f) => ({
@@ -67,7 +69,7 @@ export async function runSandboxCheck(
     logs.push('Installing dependencies...')
 
     // npm install
-    const install = await sandbox.runCommand('npm', ['install', '--prefer-offline'])
+    const install = await sandbox.runCommand('npm', ['install'])
     if (install.exitCode !== 0) {
       failed = true
       const stderr = await install.stderr()
@@ -94,6 +96,7 @@ export async function runSandboxCheck(
 
     const sandboxUrl = sandbox.domain(3000)
     logs.push(`Server live at ${sandboxUrl}`)
+    logs.push('Sandbox live — isolated Firecracker VM')
 
     // Connect MCP client and call list_tools — always close client in finally
     const client = new Client({ name: 'integration-agent-validator', version: '1.0.0' })

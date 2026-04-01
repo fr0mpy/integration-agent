@@ -1,4 +1,8 @@
-import { neon } from '@neondatabase/serverless'
+import { neon, neonConfig } from '@neondatabase/serverless'
+
+// Default fetch for non-workflow contexts (regular API routes, scripts).
+// lib/pipeline/index.ts overrides this with WDK's fetch for use inside workflow steps.
+neonConfig.fetchFunction = globalThis.fetch
 
 function getDb() {
   return neon(process.env.DATABASE_URL!)

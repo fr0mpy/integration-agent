@@ -1,9 +1,21 @@
-import { getWritable, createWebhook } from 'workflow'
+import { getWritable, createWebhook, sleep, fetch as wfFetch } from 'workflow'
+import { neonConfig } from '@neondatabase/serverless'
 import { createEvent, type PipelineEvent, type ValidateEventData, type DeployEventData } from './events'
 import type { DiscoveryResult } from './discover'
 import type { MCPServerConfig } from '../mcp/types'
 import type { SandboxResult } from './sandbox-check'
-import type { GitHubPRResult, MonorepoInfo, VercelDeployResult } from './deploy'
+import type { GitHubPRResult, MonorepoInfo, VercelDeployResult, VercelProjectResult } from './deploy'
+
+// WDK intercepts globalThis.fetch inside 'use step' / 'use workflow' functions and throws
+// if code tries to use it directly. Fix: configure Neon to use WDK's fetch, the officially
+// supported approach (https://useworkflow.dev/err/fetch-in-workflow).
+neonConfig.fetchFunction = wfFetch
+
+// deploy.ts only reaches the module cache via dynamic imports inside step functions —
+// by the time those run, WDK has replaced globalThis.fetch with an error-throwing sentinel.
+// Force a static load here so deploy.ts's `const _fetch = globalThis.fetch` captures the
+// real fetch before any step executes.
+import './deploy'
 
 async function emitEvent(event: PipelineEvent) {
   'use step'
@@ -105,20 +117,48 @@ async function runCreateGitHubPR(
   return createGitHubPR(integrationName, integrationId, files, monorepo, webhookUrl)
 }
 
+async function checkPRStatus(
+  owner: string,
+  repo: string,
+  prNumber: number,
+): Promise<{ state: string; merged: boolean }> {
+  'use step'
+  const { getOctokit } = await import('./deploy')
+  const octokit = getOctokit()
+  const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number: prNumber })
+  return { state: pr.state as string, merged: !!pr.merged }
+}
+
 async function runDeleteGitHubWebhook(owner: string, repo: string, webhookId: number): Promise<void> {
   'use step'
   const { deleteGitHubWebhook } = await import('./deploy')
   await deleteGitHubWebhook(owner, repo, webhookId)
 }
 
+async function persistPRInfo(integrationId: string, prResult: GitHubPRResult): Promise<void> {
+  'use step'
+  const { updateIntegration } = await import('../storage/neon')
+  await updateIntegration(integrationId, {
+    github_repo_url: prResult.repoUrl,
+    github_pr_url: prResult.prUrl,
+    github_repo_name: prResult.repoName,
+  })
+}
+
 async function runCreateVercelProject(
   monorepo: MonorepoInfo,
   integrationId: string,
   integrationName: string,
-): Promise<VercelDeployResult> {
+): Promise<VercelProjectResult> {
   'use step'
   const { createVercelProject } = await import('./deploy')
   return createVercelProject(monorepo, integrationId, integrationName)
+}
+
+async function runPollVercelDeployment(vercelProjectId: string): Promise<VercelDeployResult> {
+  'use step'
+  const { pollVercelDeployment } = await import('./deploy')
+  return pollVercelDeployment(vercelProjectId)
 }
 
 async function persistDeployment(
@@ -257,12 +297,7 @@ export async function synthesisePipeline(
     const prResult = await runCreateGitHubPR(discovered.apiName, integrationId, bundle.files, monorepo, prWebhook.url)
 
     // Persist PR info immediately so the UI can show the link even if the user refreshes
-    const { updateIntegration } = await import('../storage/neon')
-    await updateIntegration(integrationId, {
-      github_repo_url: prResult.repoUrl,
-      github_pr_url: prResult.prUrl,
-      github_repo_name: prResult.repoName,
-    })
+    await persistPRInfo(integrationId, prResult)
 
     await emitEvent(createEvent('deploy-mcp', 'running', {
       step: 'pr-open',
@@ -280,22 +315,41 @@ export async function synthesisePipeline(
       waitMessage: 'Waiting for PR to be merged...',
     } satisfies DeployEventData))
 
-    // Suspend workflow until GitHub fires the pull_request webhook event
-    type GHPREvent = { action?: string; pull_request?: { number: number; merged: boolean } }
+    // Wait for the PR to be merged.
+    // In prod: suspend durably via GitHub webhook (event-driven).
+    // In dev: GitHub rejects localhost webhook URLs, so poll the API every 30s instead.
+    const isLocalDev =
+      prWebhook.url.startsWith('http://localhost') || prWebhook.url.startsWith('http://127.')
+
     let mergeResult = { merged: false, closedWithoutMerge: false }
-    for await (const ghRequest of prWebhook) {
-      const body = await ghRequest.json() as GHPREvent
-      if (body.pull_request?.number !== prResult.prNumber) continue
-      if (body.action === 'closed' && body.pull_request?.merged === true) {
-        mergeResult = { merged: true, closedWithoutMerge: false }
-        break
+
+    if (isLocalDev) {
+      const POLL_DEADLINE_MS = 24 * 60 * 60 * 1000
+      const pollStart = Date.now()
+      while (Date.now() - pollStart < POLL_DEADLINE_MS) {
+        const prStatus = await checkPRStatus(prResult.repoOwner, prResult.repoName, prResult.prNumber)
+        if (prStatus.state === 'closed') {
+          mergeResult = { merged: prStatus.merged, closedWithoutMerge: !prStatus.merged }
+          break
+        }
+        await sleep('30s')
       }
-      if (body.action === 'closed') {
-        mergeResult = { merged: false, closedWithoutMerge: true }
-        break
+    } else {
+      type GHPREvent = { action?: string; pull_request?: { number: number; merged: boolean } }
+      for await (const ghRequest of prWebhook) {
+        const body = await ghRequest.json() as GHPREvent
+        if (body.pull_request?.number !== prResult.prNumber) continue
+        if (body.action === 'closed' && body.pull_request?.merged === true) {
+          mergeResult = { merged: true, closedWithoutMerge: false }
+          break
+        }
+        if (body.action === 'closed') {
+          mergeResult = { merged: false, closedWithoutMerge: true }
+          break
+        }
       }
+      await runDeleteGitHubWebhook(prResult.repoOwner, prResult.repoName, prResult.githubWebhookId)
     }
-    await runDeleteGitHubWebhook(prResult.repoOwner, prResult.repoName, prResult.githubWebhookId)
 
     if (!mergeResult.merged) {
       const reason = mergeResult.closedWithoutMerge
@@ -317,7 +371,12 @@ export async function synthesisePipeline(
       step: 'deploying',
     } satisfies DeployEventData))
 
-    const vercelResult = await runCreateVercelProject(monorepo, integrationId, discovered.apiName)
+    const projectResult = await runCreateVercelProject(monorepo, integrationId, discovered.apiName)
+    for (const line of projectResult.setupLogs) {
+      await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: line } satisfies DeployEventData))
+    }
+
+    const vercelResult = await runPollVercelDeployment(projectResult.vercelProjectId)
     for (const line of vercelResult.buildLogs) {
       await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: line } satisfies DeployEventData))
     }

@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible'
 import { ToolCard } from '@/components/pipeline/ToolCard'
 import { ValidatePanel } from '@/components/pipeline/ValidatePanel'
+import { DeployPanel } from '@/components/pipeline/DeployPanel'
 import { methodColors, authStyles } from '@/lib/ui/badges'
 import { cn } from '@/lib/utils'
 import type { DiscoveryResult, DiscoveredEndpoint } from '@/lib/pipeline/discover'
@@ -44,6 +45,9 @@ export function PipelineView({
   authMethod = null,
   initialHasCredentials = false,
   initialLiveValidatedAt = null,
+  initialPrUrl = null,
+  initialMcpUrl = null,
+  initialRepoUrl = null,
 }: {
   integrationId: string
   cached?: boolean
@@ -53,6 +57,9 @@ export function PipelineView({
   authMethod?: string | null
   initialHasCredentials?: boolean
   initialLiveValidatedAt?: string | null
+  initialPrUrl?: string | null
+  initialMcpUrl?: string | null
+  initialRepoUrl?: string | null
 }) {
   const state = usePipeline(integrationId, cached)
 
@@ -227,7 +234,21 @@ export function PipelineView({
       {/* Deploy MCP */}
       <TabsContent value="deploy-mcp" className="mt-4">
         <StagePanel status={state.stageStatus['deploy-mcp']} error={state.error} stage="deploy-mcp">
-          <PlaceholderPanel label="Deployment" />
+          <DeployPanel
+            deployStep={state.deployStep}
+            deployPrUrl={state.deployPrUrl}
+            deployPrTitle={state.deployPrTitle}
+            deployRepoUrl={state.deployRepoUrl}
+            deployRepoName={state.deployRepoName}
+            deployWaitMessage={state.deployWaitMessage}
+            deployPrStatus={state.deployPrStatus}
+            deployBuildLog={state.deployBuildLog}
+            deployMcpUrl={state.deployMcpUrl}
+            deployStatus={state.stageStatus['deploy-mcp']}
+            initialPrUrl={initialPrUrl}
+            initialMcpUrl={initialMcpUrl}
+            initialRepoUrl={initialRepoUrl}
+          />
         </StagePanel>
       </TabsContent>
 
@@ -274,7 +295,7 @@ function StagePanel({
     )
   }
 
-  if (status === 'running' && stage !== 'preview-mcp') {
+  if (status === 'running' && stage !== 'preview-mcp' && stage !== 'deploy-mcp') {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3 py-2">
