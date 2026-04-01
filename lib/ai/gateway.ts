@@ -4,10 +4,6 @@ export function synthesisModel() {
   return gateway('anthropic/claude-haiku-4.5')
 }
 
-export function validationModel() {
-  return gateway('anthropic/claude-sonnet-4.6')
-}
-
 export function buildTags(
   integrationName: string,
   stage: 'discover' | 'synthesis' | 'validation' | 'config-ui' | 'eval',

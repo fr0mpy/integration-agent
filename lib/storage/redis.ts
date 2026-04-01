@@ -64,6 +64,20 @@ export const discoveryCache = {
   },
 }
 
+export const lock = {
+  /** Acquire a distributed lock. Returns true if acquired, false if already held. */
+  async acquire(key: string, ttlMs = 120_000): Promise<boolean> {
+    const result = await safeRedis('lock acquire', () =>
+      redis.set(`lock:${key}`, '1', { px: ttlMs, nx: true }),
+    )
+    return result === 'OK'
+  },
+
+  async release(key: string): Promise<void> {
+    await safeRedis('lock release', () => redis.del(`lock:${key}`))
+  },
+}
+
 export const specCache = {
   get(specHash: string) {
     return safeRedis('spec read', () =>

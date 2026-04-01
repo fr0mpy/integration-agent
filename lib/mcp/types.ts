@@ -23,7 +23,7 @@ export const MCPToolSchema = z.object({
 export const MCPServerConfigSchema = z.object({
   tools: z.array(MCPToolSchema).min(1).max(50),
   baseUrl: z.string().url(),
-  authMethod: z.enum(['apiKey', 'bearer', 'basic', 'none']),
+  authMethod: z.enum(['apiKey', 'bearer', 'basic', 'oauth2', 'none']),
   authHeader: z.string().optional(),
 })
 

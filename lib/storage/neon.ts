@@ -51,7 +51,17 @@ export async function getIntegration(id: string) {
 
 export async function updateIntegration(
   id: string,
-  updates: { status?: string; mcp_url?: string; deployment_id?: string; run_id?: string }
+  updates: {
+    status?: string
+    mcp_url?: string
+    deployment_id?: string
+    run_id?: string
+    sandbox_id?: string | null
+    sandbox_url?: string
+    verified_tools?: string[]
+    validated_at?: string
+    live_validated_at?: string
+  }
 ): Promise<boolean> {
   if (!process.env.DATABASE_URL) {
     console.warn('DATABASE_URL not set — skipping integration update')
@@ -61,21 +71,31 @@ export async function updateIntegration(
   try {
     const sql = getDb()
 
-    if (updates.status !== undefined) {
-      await sql`UPDATE integrations SET status = ${updates.status} WHERE id = ${id}`
-    }
+    // Issue all updates as concurrent HTTP requests (neon HTTP driver).
+    // Using Promise.all avoids N serial round-trips while staying within
+    // the tagged-template-literal constraint of the neon driver.
+    const queries: Promise<unknown>[] = []
 
-    if (updates.mcp_url !== undefined) {
-      await sql`UPDATE integrations SET mcp_url = ${updates.mcp_url} WHERE id = ${id}`
-    }
+    if (updates.status !== undefined)
+      queries.push(sql`UPDATE integrations SET status = ${updates.status} WHERE id = ${id}`)
+    if (updates.mcp_url !== undefined)
+      queries.push(sql`UPDATE integrations SET mcp_url = ${updates.mcp_url} WHERE id = ${id}`)
+    if (updates.deployment_id !== undefined)
+      queries.push(sql`UPDATE integrations SET deployment_id = ${updates.deployment_id} WHERE id = ${id}`)
+    if (updates.run_id !== undefined)
+      queries.push(sql`UPDATE integrations SET run_id = ${updates.run_id} WHERE id = ${id}`)
+    if (updates.sandbox_id !== undefined)
+      queries.push(sql`UPDATE integrations SET sandbox_id = ${updates.sandbox_id} WHERE id = ${id}`)
+    if (updates.sandbox_url !== undefined)
+      queries.push(sql`UPDATE integrations SET sandbox_url = ${updates.sandbox_url} WHERE id = ${id}`)
+    if (updates.verified_tools !== undefined)
+      queries.push(sql`UPDATE integrations SET verified_tools = ${updates.verified_tools} WHERE id = ${id}`)
+    if (updates.validated_at !== undefined)
+      queries.push(sql`UPDATE integrations SET validated_at = ${updates.validated_at} WHERE id = ${id}`)
+    if (updates.live_validated_at !== undefined)
+      queries.push(sql`UPDATE integrations SET live_validated_at = ${updates.live_validated_at} WHERE id = ${id}`)
 
-    if (updates.deployment_id !== undefined) {
-      await sql`UPDATE integrations SET deployment_id = ${updates.deployment_id} WHERE id = ${id}`
-    }
-
-    if (updates.run_id !== undefined) {
-      await sql`UPDATE integrations SET run_id = ${updates.run_id} WHERE id = ${id}`
-    }
+    if (queries.length > 0) await Promise.all(queries)
 
     return true
   } catch (err) {
@@ -113,6 +133,46 @@ export async function listIntegrations(limit = 20): Promise<IntegrationSummary[]
   }
 }
 
+export async function saveCredentials(integrationId: string, encryptedValue: string): Promise<boolean> {
+  if (!process.env.DATABASE_URL) return false
+  try {
+    const sql = getDb()
+    await sql`
+      INSERT INTO credentials (integration_id, encrypted_value, created_at)
+      VALUES (${integrationId}, ${encryptedValue}, NOW())
+      ON CONFLICT (integration_id) DO UPDATE SET encrypted_value = EXCLUDED.encrypted_value
+    `
+    return true
+  } catch (err) {
+    console.error('Neon query failed (saveCredentials):', err instanceof Error ? err.message : 'unknown')
+    return false
+  }
+}
+
+export async function getCredentials(integrationId: string): Promise<string | null> {
+  if (!process.env.DATABASE_URL) return null
+  try {
+    const sql = getDb()
+    const rows = await sql`SELECT encrypted_value FROM credentials WHERE integration_id = ${integrationId}`
+    return (rows[0]?.encrypted_value as string) ?? null
+  } catch (err) {
+    console.error('Neon query failed (getCredentials):', err instanceof Error ? err.message : 'unknown')
+    return null
+  }
+}
+
+export async function hasCredentials(integrationId: string): Promise<boolean> {
+  if (!process.env.DATABASE_URL) return false
+  try {
+    const sql = getDb()
+    const rows = await sql`SELECT 1 FROM credentials WHERE integration_id = ${integrationId} LIMIT 1`
+    return rows.length > 0
+  } catch (err) {
+    console.error('Neon query failed (hasCredentials):', err instanceof Error ? err.message : 'unknown')
+    return false
+  }
+}
+
 /** SQL to create the integrations table — run once during setup */
 export const CREATE_TABLE_SQL = `
   CREATE TABLE IF NOT EXISTS integrations (
@@ -128,6 +188,13 @@ export const CREATE_TABLE_SQL = `
 
   -- Migration: add spec_url if it doesn't exist yet
   ALTER TABLE integrations ADD COLUMN IF NOT EXISTS spec_url TEXT;
+
+  -- Migration: sandbox validation tracking
+  ALTER TABLE integrations ADD COLUMN IF NOT EXISTS sandbox_id TEXT;
+  ALTER TABLE integrations ADD COLUMN IF NOT EXISTS sandbox_url TEXT;
+  ALTER TABLE integrations ADD COLUMN IF NOT EXISTS verified_tools TEXT[];
+  ALTER TABLE integrations ADD COLUMN IF NOT EXISTS validated_at TIMESTAMPTZ;
+  ALTER TABLE integrations ADD COLUMN IF NOT EXISTS live_validated_at TIMESTAMPTZ;
 
   CREATE TABLE IF NOT EXISTS credentials (
     integration_id TEXT PRIMARY KEY REFERENCES integrations(id),

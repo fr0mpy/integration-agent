@@ -13,15 +13,19 @@ const MAX_RETRIES = 2
  */
 export async function synthesiseTools(
   discovered: DiscoveryResult,
+  buildErrors?: string,
 ): Promise<MCPServerConfig> {
-  const userPrompt = buildSynthesisPrompt(discovered)
+  let userPrompt = buildSynthesisPrompt(discovered)
+  if (buildErrors) {
+    userPrompt += `\n\nPREVIOUS SANDBOX BUILD ERRORS — fix these in the generated tool handlers:\n${buildErrors}`
+  }
   let lastError: string | null = null
 
   console.log(`[Synthesis] Starting for "${discovered.apiName}" (${discovered.endpointCount} endpoints)`)
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const prompt = lastError
-      ? `${userPrompt}\n\nPrevious attempt failed Zod validation with these errors:\n${lastError}\n\nPlease fix the issues and try again.`
+      ? `${userPrompt}\n\nPrevious attempt failed validation with these errors:\n${lastError}\n\nPlease fix the issues and try again.`
       : userPrompt
 
     const tags = buildTags(discovered.apiName, 'synthesis', attempt > 0 ? `retry-${attempt}` : undefined)

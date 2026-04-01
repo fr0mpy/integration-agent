@@ -1,7 +1,7 @@
 import type { MCPServerConfig } from '../mcp/types'
 import type { DiscoveryResult } from './discover'
 
-export interface ValidationError {
+export interface ToolValidationError {
   tool: string
   message: string
 }
@@ -9,7 +9,7 @@ export interface ValidationError {
 export interface ValidationResult {
   valid: boolean
   toolCount: number
-  errors: ValidationError[]
+  errors: ToolValidationError[]
 }
 
 /**
@@ -26,7 +26,7 @@ export function validateConfig(
   config: MCPServerConfig,
   discovery: DiscoveryResult,
 ): ValidationResult {
-  const errors: ValidationError[] = []
+  const errors: ToolValidationError[] = []
 
   // 1. No duplicate tool names
   const seen = new Set<string>()

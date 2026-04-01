@@ -8,10 +8,11 @@ export interface SandboxResult {
   ok: boolean
   verifiedTools: string[]
   sandboxUrl: string
+  sandboxId: string | null
   errors?: string
 }
 
-const BUILD_TIMEOUT_MS = 120_000
+const SANDBOX_LIVE_TIMEOUT_MS = 30 * 60 * 1000  // keep alive for chat use
 const SERVER_WARMUP_MS = 3_000
 
 /**
@@ -22,20 +23,36 @@ const SERVER_WARMUP_MS = 3_000
  * 3. Starts the server detached on port 3000
  * 4. Connects with an MCP client and calls list_tools
  * 5. Verifies the returned tool names match validatedConfig.tools
- * 6. Destroys the sandbox
+ * 6. Destroys the sandbox on failure; leaves it running on success for chat use
  */
 export async function runSandboxCheck(
   bundle: BundleResult,
   config: MCPServerConfig,
   onLog?: (log: string) => void,
 ): Promise<SandboxResult> {
-  const sandbox = await Sandbox.create({
-    runtime: 'node24',
-    ports: [3000],
-    env: { MCP_BASE_URL: config.baseUrl },
-    timeout: BUILD_TIMEOUT_MS,
-  })
+  const snapshotId = process.env.SANDBOX_SNAPSHOT_ID
 
+  let sandbox: Sandbox
+  try {
+    sandbox = await Sandbox.create({
+      ...(snapshotId
+        ? { source: { type: 'snapshot', snapshotId } }
+        : { runtime: 'node24' }),
+      ports: [3000],
+      env: { MCP_BASE_URL: config.baseUrl },
+      timeout: SANDBOX_LIVE_TIMEOUT_MS,
+    })
+  } catch (err) {
+    return {
+      ok: false,
+      verifiedTools: [],
+      sandboxUrl: '',
+      sandboxId: null,
+      errors: `Sandbox creation failed: ${err instanceof Error ? err.message : String(err)}`,
+    }
+  }
+
+  let failed = false
   try {
     // Write all generated files
     await sandbox.writeFiles(
@@ -50,8 +67,9 @@ export async function runSandboxCheck(
     // npm install
     const install = await sandbox.runCommand('npm', ['install', '--prefer-offline'])
     if (install.exitCode !== 0) {
+      failed = true
       const stderr = await install.stderr()
-      return { ok: false, verifiedTools: [], sandboxUrl: '', errors: stderr }
+      return { ok: false, verifiedTools: [], sandboxUrl: '', sandboxId: null, errors: stderr }
     }
 
     onLog?.('Building...')
@@ -59,8 +77,9 @@ export async function runSandboxCheck(
     // next build
     const build = await sandbox.runCommand('npm', ['run', 'build'])
     if (build.exitCode !== 0) {
+      failed = true
       const stderr = await build.stderr()
-      return { ok: false, verifiedTools: [], sandboxUrl: '', errors: stderr }
+      return { ok: false, verifiedTools: [], sandboxUrl: '', sandboxId: null, errors: stderr }
     }
 
     onLog?.('Starting MCP server...')
@@ -74,31 +93,40 @@ export async function runSandboxCheck(
     const sandboxUrl = sandbox.domain(3000)
     onLog?.(`Server live at ${sandboxUrl}`)
 
-    // Connect MCP client and call list_tools
+    // Connect MCP client and call list_tools — always close client in finally
     const client = new Client({ name: 'integration-agent-validator', version: '1.0.0' })
     const transport = new StreamableHTTPClientTransport(new URL(`${sandboxUrl}/mcp`))
-    await client.connect(transport)
 
-    const { tools: returnedTools } = await client.listTools()
-    await client.close()
+    let returnedTools: Array<{ name: string }>
+    try {
+      await client.connect(transport)
+      const result = await client.listTools()
+      returnedTools = result.tools
+    } finally {
+      await client.close()
+    }
 
     const returnedNames = returnedTools.map((t) => t.name)
     const expectedNames = config.tools.map((t) => t.name)
     const missing = expectedNames.filter((n) => !returnedNames.includes(n))
 
     if (missing.length > 0) {
+      failed = true
       return {
         ok: false,
         verifiedTools: returnedNames,
         sandboxUrl,
+        sandboxId: null,
         errors: `Missing tools in live server: ${missing.join(', ')}`,
       }
     }
 
     onLog?.(`${returnedNames.length}/${expectedNames.length} tools verified`)
 
-    return { ok: true, verifiedTools: returnedNames, sandboxUrl }
+    // Success — leave sandbox running (30 min TTL) for chat callTool use
+    return { ok: true, verifiedTools: returnedNames, sandboxUrl, sandboxId: sandbox.sandboxId }
   } finally {
-    await sandbox.stop()
+    // Only stop on failure — successful sandboxes stay alive for the chat panel
+    if (failed) await sandbox.stop()
   }
 }

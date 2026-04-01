@@ -9,11 +9,13 @@ export type PipelineStatus =
   | 'failed'
   | 'tool_complete'
   | 'building'
+  | 'done'
 
 export interface ValidateEventData {
   sourceCode?: string
   buildLog?: string
   sandboxUrl?: string
+  sandboxId?: string | null
   verifiedTools?: string[]
   toolCount?: number
   errors?: string

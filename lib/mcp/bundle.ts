@@ -5,6 +5,11 @@ import { generateServerSource } from './template'
 
 const TMPL_DIR = join(process.cwd(), 'generated-server-template')
 
+// Cache template reads at module load — bundleServer is called on every /files and /chat request
+const PACKAGE_JSON_TMPL = readFileSync(join(TMPL_DIR, 'package.json.tmpl'), 'utf-8')
+const VERCEL_JSON_TMPL = readFileSync(join(TMPL_DIR, 'vercel.json.tmpl'), 'utf-8')
+const NEXT_CONFIG_TMPL = readFileSync(join(TMPL_DIR, 'next.config.ts.tmpl'), 'utf-8')
+
 export interface BundledFile {
   /** Relative path inside the deploy (e.g. 'app/[transport]/route.ts') */
   file: string
@@ -25,9 +30,9 @@ export interface BundleResult {
 export function bundleServer(config: MCPServerConfig): BundleResult {
   const sourceCode = generateServerSource(config)
 
-  const packageJson = readFileSync(join(TMPL_DIR, 'package.json.tmpl'), 'utf-8')
-  const vercelJson = readFileSync(join(TMPL_DIR, 'vercel.json.tmpl'), 'utf-8')
-  const nextConfig = readFileSync(join(TMPL_DIR, 'next.config.ts.tmpl'), 'utf-8')
+  const packageJson = PACKAGE_JSON_TMPL
+  const vercelJson = VERCEL_JSON_TMPL
+  const nextConfig = NEXT_CONFIG_TMPL
 
   const tsConfig = JSON.stringify(
     {

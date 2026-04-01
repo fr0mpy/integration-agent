@@ -1,5 +1,28 @@
 import { lookup } from 'dns/promises'
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+export function isValidUUID(id: string): boolean {
+  return UUID_RE.test(id)
+}
+
+/**
+ * SSRF guard for sandbox URLs: resolves DNS and rejects private/internal IPs.
+ * Throws ValidationError on any violation so callers can return 400.
+ */
+export async function validateSandboxUrl(url: string): Promise<void> {
+  let hostname: string
+  try {
+    hostname = new URL(url).hostname
+  } catch {
+    throw new ValidationError('Invalid sandbox URL.')
+  }
+  const { address } = await lookup(hostname)
+  if (isPrivateIP(address)) {
+    throw new ValidationError('Sandbox URL resolves to a private/internal address.')
+  }
+}
+
 const BLOCKED_IP_RANGES = [
   /^127\./, // loopback
   /^10\./, // 10.0.0.0/8

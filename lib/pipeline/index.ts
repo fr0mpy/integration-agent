@@ -2,6 +2,7 @@ import { getWritable } from 'workflow'
 import { createEvent, type PipelineEvent, type ValidateEventData } from './events'
 import type { DiscoveryResult } from './discover'
 import type { MCPServerConfig } from '../mcp/types'
+import type { SandboxResult } from './sandbox-check'
 
 async function emitEvent(event: PipelineEvent) {
   'use step'
@@ -22,6 +23,15 @@ async function runSynthesis(discovered: DiscoveryResult): Promise<MCPServerConfi
   'use step'
   const { synthesiseTools } = await import('./synthesise')
   return synthesiseTools(discovered)
+}
+
+async function runSynthesisWithBuildErrors(
+  discovered: DiscoveryResult,
+  buildErrors: string,
+): Promise<MCPServerConfig> {
+  'use step'
+  const { synthesiseTools } = await import('./synthesise')
+  return synthesiseTools(discovered, buildErrors)
 }
 
 async function runCodegen(config: MCPServerConfig): Promise<{ files: Array<{ file: string; data: string }>; sourceCode: string }> {
@@ -54,6 +64,17 @@ async function setIntegrationStatus(integrationId: string, status: string) {
   await updateIntegration(integrationId, { status })
 }
 
+async function persistValidation(integrationId: string, result: SandboxResult) {
+  'use step'
+  const { updateIntegration } = await import('../storage/neon')
+  await updateIntegration(integrationId, {
+    sandbox_id: result.sandboxId,
+    sandbox_url: result.sandboxUrl,
+    verified_tools: result.verifiedTools,
+    validated_at: new Date().toISOString(),
+  })
+}
+
 async function failIntegration(integrationId: string) {
   'use step'
   const { updateIntegration, INTEGRATION_STATUS } = await import('../storage/neon')
@@ -72,6 +93,9 @@ export async function synthesisePipeline(
 ) {
   'use workflow'
 
+  // Track which stage is active so the catch block emits the correct failed event
+  let currentStage: 'discover-api' | 'build-mcp' | 'preview-mcp' = 'discover-api'
+
   try {
     // Stage 1: Discovery + Enrichment
     await emitEvent(createEvent('discover-api', 'running'))
@@ -81,8 +105,9 @@ export async function synthesisePipeline(
     await setIntegrationStatus(integrationId, 'synthesising')
 
     // Stage 2: Synthesis
+    currentStage = 'build-mcp'
     await emitEvent(createEvent('build-mcp', 'running'))
-    const config = await runSynthesis(discovered)
+    let config = await runSynthesis(discovered)
 
     for (const tool of config.tools) {
       await emitEvent(createEvent('build-mcp', 'tool_complete', tool))
@@ -96,23 +121,46 @@ export async function synthesisePipeline(
       const errorMsg = structural.errors.map((e) => `${e.tool}: ${e.message}`).join('; ')
       await emitEvent(createEvent('preview-mcp', 'failed', { errors: errorMsg } satisfies ValidateEventData))
       await failIntegration(integrationId)
+      await emitEvent(createEvent('preview-mcp', 'done'))
       return config
     }
 
     // Codegen
-    const bundle = await runCodegen(config)
+    currentStage = 'preview-mcp'
+    let bundle = await runCodegen(config)
 
     // Stage 3: Validate — build + start + live MCP test
     await emitEvent(createEvent('preview-mcp', 'running', { sourceCode: bundle.sourceCode } satisfies ValidateEventData))
     await setIntegrationStatus(integrationId, 'validating')
 
-    const sandboxResult = await runValidateSandbox(bundle, config, async (log) => {
+    let sandboxResult = await runValidateSandbox(bundle, config, async (log) => {
       await emitEvent(createEvent('preview-mcp', 'building', { buildLog: log } satisfies ValidateEventData))
     })
+
+    // Sandbox build failed — retry synthesis once with build errors as context
+    if (!sandboxResult.ok && sandboxResult.errors) {
+      currentStage = 'build-mcp'
+      await emitEvent(createEvent('build-mcp', 'running'))
+      config = await runSynthesisWithBuildErrors(discovered, sandboxResult.errors)
+
+      for (const tool of config.tools) {
+        await emitEvent(createEvent('build-mcp', 'tool_complete', tool))
+      }
+      await emitEvent(createEvent('build-mcp', 'complete', config))
+
+      currentStage = 'preview-mcp'
+      bundle = await runCodegen(config)
+      await emitEvent(createEvent('preview-mcp', 'running', { sourceCode: bundle.sourceCode } satisfies ValidateEventData))
+
+      sandboxResult = await runValidateSandbox(bundle, config, async (log) => {
+        await emitEvent(createEvent('preview-mcp', 'building', { buildLog: log } satisfies ValidateEventData))
+      })
+    }
 
     if (!sandboxResult.ok) {
       await emitEvent(createEvent('preview-mcp', 'failed', { errors: sandboxResult.errors } satisfies ValidateEventData))
       await failIntegration(integrationId)
+      await emitEvent(createEvent('preview-mcp', 'done'))
       return config
     }
 
@@ -120,16 +168,24 @@ export async function synthesisePipeline(
       verifiedTools: sandboxResult.verifiedTools,
       toolCount: sandboxResult.verifiedTools.length,
       sandboxUrl: sandboxResult.sandboxUrl,
+      sandboxId: sandboxResult.sandboxId,
     } satisfies ValidateEventData))
+
+    // Persist validation proof to Neon
+    await persistValidation(integrationId, sandboxResult)
 
     // Cache results only after validation passes
     await cacheResults(specHash, specUrl, config, discovered)
 
+    // Terminal event: tells the client the stream is finished (prevents spurious reconnects)
+    await emitEvent(createEvent('preview-mcp', 'done'))
+
     return config
   } catch (err) {
     console.error('Pipeline error:', err instanceof Error ? err.message : 'unknown')
-    await emitEvent(createEvent('build-mcp', 'failed', { error: 'Pipeline failed. Please try again.' }))
+    await emitEvent(createEvent(currentStage, 'failed', { error: 'Pipeline failed. Please try again.' }))
     await failIntegration(integrationId)
+    await emitEvent(createEvent(currentStage, 'done'))
     throw err
   }
 }
