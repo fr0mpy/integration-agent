@@ -1,10 +1,9 @@
-import { NextResponse } from 'next/server'
 import { getIntegration } from '@/lib/storage/neon'
 import { configCache } from '@/lib/storage/redis'
 import { bundleServer } from '@/lib/mcp/bundle'
+import { isValidUUID } from '@/lib/validation'
+import { success, errors } from '@/lib/api/response'
 import type { MCPServerConfig } from '@/lib/mcp/types'
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export async function GET(
   _req: Request,
@@ -13,24 +12,24 @@ export async function GET(
   try {
     const { integrationId } = await params
 
-    if (!UUID_RE.test(integrationId)) {
-      return NextResponse.json({ error: 'Invalid integration ID' }, { status: 400 })
+    if (!isValidUUID(integrationId)) {
+      return errors.badRequest('Invalid integration ID.')
     }
 
     const integration = await getIntegration(integrationId)
     if (!integration) {
-      return NextResponse.json({ error: 'Integration not found' }, { status: 404 })
+      return errors.notFound('Integration not found.')
     }
 
     const config = await configCache.get(integration.spec_hash) as MCPServerConfig | null
     if (!config) {
-      return NextResponse.json({ error: 'Config not cached yet' }, { status: 404 })
+      return errors.notFound('Config not cached yet.')
     }
 
     const { files } = bundleServer(config)
-    return NextResponse.json({ files })
+    return success({ files })
   } catch (err) {
     console.error('Files route error:', err instanceof Error ? err.message : 'unknown')
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return errors.internal()
   }
 }

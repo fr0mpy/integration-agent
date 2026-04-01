@@ -3,7 +3,7 @@ import { getIntegration } from '@/lib/storage/neon'
 import { configCache, discoveryCache } from '@/lib/storage/redis'
 import type { PipelineEvent } from '@/lib/pipeline/events'
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+import { isValidUUID } from '@/lib/validation'
 
 const SSE_HEADERS = {
   'Content-Type': 'text/event-stream',
@@ -34,7 +34,7 @@ export async function GET(
   try {
     const { integrationId } = await params
 
-    if (!UUID_RE.test(integrationId)) {
+    if (!isValidUUID(integrationId)) {
       return sseError('Invalid integration ID.')
     }
 

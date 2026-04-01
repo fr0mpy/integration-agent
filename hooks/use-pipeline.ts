@@ -28,6 +28,7 @@ const INITIAL_STAGE_STATUS: PipelineState['stageStatus'] = {
   'build-mcp': 'pending',
   'preview-mcp': 'pending',
   'deploy-mcp': 'pending',
+  'health-check': 'pending',
 }
 
 const MAX_RETRIES = 3
@@ -63,7 +64,7 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
           discovery: discovery ?? null,
           tools: config.tools ?? [],
           verifiedTools: (config.tools ?? []).map((t: MCPToolDefinition) => t.name),
-          currentStage: 'build-mcp',
+          currentStage: null,  // don't trigger auto-advance for cached loads
           connected: true,
           stageStatus: {
             ...prev.stageStatus,
@@ -119,6 +120,8 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
         }
       } else if (event.status === 'tool_complete' && event.data) {
         next.tools = [...prev.tools, event.data as MCPToolDefinition]
+      } else if (event.status === 'done') {
+        terminalRef.current = true
       } else if (event.status === 'failed') {
         next.stageStatus[event.stage] = 'failed'
         const errorData = event.data as { error?: string; errors?: string } | null

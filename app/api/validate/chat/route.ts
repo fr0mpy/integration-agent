@@ -1,16 +1,16 @@
 import { convertToModelMessages, streamText, stepCountIs } from 'ai'
 import type { UIMessage } from 'ai'
 import { z } from 'zod'
-import { lookup } from 'dns/promises'
 import { getIntegration } from '@/lib/storage/neon'
 import { configCache } from '@/lib/storage/redis'
 import { bundleServer } from '@/lib/mcp/bundle'
-import { isPrivateIP } from '@/lib/validation'
+import { validateSandboxUrl, ValidationError } from '@/lib/validation'
+import { errors } from '@/lib/api/response'
 import type { MCPServerConfig } from '@/lib/mcp/types'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 
-export const maxDuration = 60
+export const maxDuration = 120
 
 const bodySchema = z.object({
   integrationId: z.string().uuid(),
@@ -23,28 +23,28 @@ export async function POST(req: Request) {
     const raw = await req.json()
     const parsed = bodySchema.safeParse(raw)
     if (!parsed.success) {
-      return new Response('Invalid request', { status: 400 })
+      return errors.badRequest('Invalid request.')
     }
 
     const { messages, integrationId, sandboxUrl } = parsed.data
 
     // SSRF guard: validate sandboxUrl resolves to a public IP
     if (sandboxUrl) {
-      const { hostname } = new URL(sandboxUrl)
-      const { address } = await lookup(hostname)
-      if (isPrivateIP(address)) {
-        return new Response('Invalid sandbox URL', { status: 400 })
+      try {
+        await validateSandboxUrl(sandboxUrl)
+      } catch (err) {
+        return errors.badRequest(err instanceof ValidationError ? err.message : 'Invalid sandbox URL.')
       }
     }
 
     const integration = await getIntegration(integrationId)
     if (!integration) {
-      return new Response('Integration not found', { status: 404 })
+      return errors.notFound('Integration not found.')
     }
 
     const config = await configCache.get(integration.spec_hash) as MCPServerConfig | null
     if (!config) {
-      return new Response('Config not cached', { status: 404 })
+      return errors.notFound('Config not cached.')
     }
 
     const { sourceCode } = bundleServer(config)
@@ -77,13 +77,21 @@ Show your reasoning clearly — explain WHY you're calling each tool before you 
 
     const result = streamText({
       model: 'anthropic/claude-sonnet-4.6',
-      system,
-      messages: await convertToModelMessages(messages as UIMessage[]),
-      providerOptions: {
-        anthropic: {
-          thinking: { type: 'enabled', budgetTokens: 3000 },
+      messages: [
+        // Cache the static system context (tool list + source code) — same per integration
+        {
+          role: 'user',
+          content: [{
+            type: 'text',
+            text: system,
+            providerOptions: {
+              anthropic: { cacheControl: { type: 'ephemeral' } },
+            },
+          }],
         },
-      },
+        { role: 'assistant', content: 'Ready.' },
+        ...await convertToModelMessages(messages as UIMessage[]),
+      ],
       stopWhen: stepCountIs(10),
       tools: {
         listTools: {
@@ -134,16 +142,22 @@ Show your reasoning clearly — explain WHY you're calling each tool before you 
               return { error: 'No sandbox URL available. The sandbox runs only during pipeline validation. Re-run the pipeline to get a live sandbox.' }
             }
 
+            const validNames = config.tools.map((t) => t.name)
+            if (!validNames.includes(toolName)) {
+              return { error: `Tool "${toolName}" not found. Available: ${validNames.join(', ')}` }
+            }
+
             const client = new Client({ name: 'integration-agent-chat', version: '1.0.0' })
             const transport = new StreamableHTTPClientTransport(new URL(`${sandboxUrl}/mcp`))
 
             try {
               await client.connect(transport)
               const result = await client.callTool({ name: toolName, arguments: args })
-              await client.close()
               return { ok: true, result: result.content }
             } catch (err) {
               return { ok: false, error: err instanceof Error ? err.message : String(err) }
+            } finally {
+              await client.close().catch(() => {})
             }
           },
         },
@@ -158,6 +172,6 @@ Show your reasoning clearly — explain WHY you're calling each tool before you 
     })
   } catch (err) {
     console.error('Chat route error:', err instanceof Error ? err.message : 'unknown')
-    return new Response('Internal server error', { status: 500 })
+    return errors.internal()
   }
 }

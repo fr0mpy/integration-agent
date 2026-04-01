@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'crypto'
 import { z } from 'zod'
 import { Ratelimit } from '@upstash/ratelimit'
-import { redis, urlCache, configCache, specCache } from '@/lib/storage/redis'
+import { redis, urlCache, configCache, specCache, lock } from '@/lib/storage/redis'
 import { createIntegration, updateIntegration } from '@/lib/storage/neon'
 import { validateAndFetchSpec, ValidationError } from '@/lib/validation'
 import { success, errors } from '@/lib/api/response'
@@ -24,12 +24,16 @@ export async function POST(req: Request) {
       ?? req.headers.get('x-real-ip')
       ?? 'anonymous'
 
+    // Fail-closed: if Redis is unavailable, deny rather than proceed unthrottled
+    let rateLimitAllowed: boolean
     try {
       const { success: allowed } = await ratelimit.limit(ip)
-      if (!allowed) return errors.tooManyRequests()
+      rateLimitAllowed = allowed
     } catch (err) {
       console.warn('Rate limit check failed:', err instanceof Error ? err.message : 'unknown')
+      rateLimitAllowed = false
     }
+    if (!rateLimitAllowed) return errors.tooManyRequests()
 
     const body = await req.json()
     const { specUrl } = bodySchema.parse(body)
@@ -55,23 +59,33 @@ export async function POST(req: Request) {
       .update(JSON.stringify(spec))
       .digest('hex')
 
-    // Store raw spec so the pipeline can retrieve it by hash
-    await specCache.set(specHash, spec)
+    // Prevent concurrent synthesis of the same spec
+    const acquired = await lock.acquire(`synthesis:${specHash}`)
+    if (!acquired) {
+      return errors.conflict('A synthesis pipeline for this spec is already running.')
+    }
 
-    const integrationId = randomUUID()
-    const created = await createIntegration(integrationId, specHash, specUrl)
-    if (!created) return errors.internal()
+    try {
+      // Store raw spec so the pipeline can retrieve it by hash
+      await specCache.set(specHash, spec)
 
-    // Start the durable workflow pipeline
-    // URL cache is written inside the pipeline only after successful synthesis
-    const run = await start(synthesisePipeline, [integrationId, spec, specHash, specUrl])
-    await updateIntegration(integrationId, { run_id: run.runId })
+      const integrationId = randomUUID()
+      const created = await createIntegration(integrationId, specHash, specUrl)
+      if (!created) return errors.internal()
 
-    return success({
-      integrationId,
-      runId: run.runId,
-      cached: false,
-    })
+      // Start the durable workflow pipeline
+      // URL cache is written inside the pipeline only after successful synthesis
+      const run = await start(synthesisePipeline, [integrationId, spec, specHash, specUrl])
+      await updateIntegration(integrationId, { run_id: run.runId })
+
+      return success({
+        integrationId,
+        runId: run.runId,
+        cached: false,
+      })
+    } finally {
+      await lock.release(`synthesis:${specHash}`)
+    }
   } catch (err) {
     console.error('Synthesise error:', err instanceof Error ? err.message : 'unknown')
 
