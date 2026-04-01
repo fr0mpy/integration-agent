@@ -1,4 +1,4 @@
-import { createHmac } from 'crypto'
+import { createHmac, timingSafeEqual } from 'crypto'
 import { getCredentials } from '@/lib/storage/neon'
 import { decrypt } from '@/lib/crypto'
 import { isValidUUID } from '@/lib/validation'
@@ -39,8 +39,11 @@ export async function GET(req: Request) {
 
   // Verify HMAC — must match what the generated server computes:
   // HMAC-SHA256(CREDENTIAL_HMAC_SECRET, integrationId) → hex
+  // Constant-time comparison prevents timing side-channel attacks.
   const expected = createHmac('sha256', hmacSecret).update(integrationId).digest('hex')
-  if (signature !== expected) {
+  const sigBuf = Buffer.from(signature, 'hex')
+  const expBuf = Buffer.from(expected, 'hex')
+  if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
     return errors.forbidden()
   }
 
@@ -51,6 +54,10 @@ export async function GET(req: Request) {
 
   try {
     const parsed = JSON.parse(decrypt(encryptedValue)) as { apiKey: string }
+    if (!parsed.apiKey) {
+      console.error('Decrypted credential is empty for integration', integrationId)
+      return errors.internal()
+    }
     return success({ apiKey: parsed.apiKey })
   } catch {
     return errors.internal()

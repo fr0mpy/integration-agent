@@ -4,7 +4,7 @@ import { decrypt } from '@/lib/crypto'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { isValidUUID, validateSandboxUrl, ValidationError } from '@/lib/validation'
-import { errors } from '@/lib/api/response'
+import { success, errors } from '@/lib/api/response'
 import type { MCPServerConfig } from '@/lib/mcp/types'
 
 export const maxDuration = 60
@@ -84,12 +84,12 @@ export async function POST(
     // API has no auth-required tools — credentials aren't needed, mark as verified anyway
     const liveValidatedAt = new Date().toISOString()
     await updateIntegration(integrationId, { live_validated_at: liveValidatedAt })
-    return Response.json({
+    return success({
       ok: true,
       liveValidatedAt,
       results: [],
       note: 'No auth-required tools — this API does not need credentials',
-    } satisfies RevalidateResponse & { note: string })
+    })
   }
 
   // Connect to sandbox MCP server with credential as Bearer token.
@@ -104,10 +104,9 @@ export async function POST(
   try {
     await client.connect(transport)
   } catch (err) {
-    return Response.json({
-      ok: false,
-      error: `Sandbox unreachable — VM may have expired. Error: ${err instanceof Error ? err.message : String(err)}`,
-    }, { status: 503 })
+    return errors.serviceUnavailable(
+      `Sandbox unreachable — VM may have expired. Error: ${err instanceof Error ? err.message : String(err)}`
+    )
   }
 
   const results: RevalidateResult[] = []
@@ -161,9 +160,9 @@ export async function POST(
     await updateIntegration(integrationId, { live_validated_at: liveValidatedAt })
   }
 
-  return Response.json({
+  return success({
     ok: anyOk,
     liveValidatedAt: anyOk ? liveValidatedAt : '',
     results,
-  } satisfies RevalidateResponse)
+  })
 }

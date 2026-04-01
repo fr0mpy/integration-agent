@@ -65,6 +65,16 @@ export async function POST(req: Request) {
     }
 
     try {
+      // Check configCache inside the lock window — catches duplicate specs submitted
+      // via different URLs (urlCache misses but content hash matches)
+      const cachedInLock = await configCache.get(specHash)
+      if (cachedInLock) {
+        const integrationId = randomUUID()
+        const cachedOk = await createIntegration(integrationId, specHash, specUrl)
+        if (!cachedOk) return errors.internal()
+        return success({ integrationId, cached: true })
+      }
+
       const integrationId = randomUUID()
       const created = await createIntegration(integrationId, specHash, specUrl)
       if (!created) return errors.internal()

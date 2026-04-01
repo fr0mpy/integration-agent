@@ -6,6 +6,7 @@ import { configCache } from '@/lib/storage/redis'
 import { bundleServer } from '@/lib/mcp/bundle'
 import { validateSandboxUrl, ValidationError } from '@/lib/validation'
 import { errors } from '@/lib/api/response'
+import { chatModel } from '@/lib/ai/gateway'
 import type { MCPServerConfig } from '@/lib/mcp/types'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -15,7 +16,10 @@ export const maxDuration = 120
 const bodySchema = z.object({
   integrationId: z.string().uuid(),
   sandboxUrl: z.string().url().startsWith('https://').optional(),
-  messages: z.array(z.unknown()).max(100),
+  messages: z.array(z.object({
+    role: z.enum(['user', 'assistant', 'system']),
+    content: z.union([z.string().max(50_000), z.array(z.unknown())]),
+  }).passthrough()).max(100),
 })
 
 export async function POST(req: Request) {
@@ -76,7 +80,7 @@ When answering questions, use your tools to give precise, accurate answers rathe
 Show your reasoning clearly — explain WHY you're calling each tool before you call it.`
 
     const result = streamText({
-      model: 'anthropic/claude-sonnet-4.6',
+      model: chatModel(),
       messages: [
         // Cache the static system context (tool list + source code) — same per integration
         {

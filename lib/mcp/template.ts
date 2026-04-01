@@ -63,6 +63,15 @@ function generateHandler(tool: MCPToolDefinition): string {
 
   // Detect path params: /users/{id} → ['id']
   const pathParams = (httpPath.match(/\{([^}]+)\}/g) ?? []).map((s) => s.slice(1, -1))
+
+  // Validate path param names are safe JS identifiers to prevent code injection
+  const SAFE_IDENT = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/
+  for (const p of pathParams) {
+    if (!SAFE_IDENT.test(p)) {
+      throw new Error(`Unsafe path parameter name: ${p}`)
+    }
+  }
+
   const queryParams = paramNames.filter(
     (n) => !pathParams.includes(n) && (httpMethod === 'GET' || httpMethod === 'DELETE'),
   )
@@ -79,8 +88,8 @@ function generateHandler(tool: MCPToolDefinition): string {
     lines.push(`      const creds = await fetchCredentials(authInfo?.token)`)
   }
 
-  // Build URL with path param substitution
-  let urlExpr = `\`\${BASE_URL}${httpPath.replace(/\{([^}]+)\}/g, '${params.$1}')}\``
+  // Build URL with path param substitution — encodeURIComponent prevents path traversal
+  let urlExpr = `\`\${BASE_URL}${httpPath.replace(/\{([^}]+)\}/g, '${encodeURIComponent(String(params.$1))}')}\``
 
   if (queryParams.length > 0) {
     lines.push(`      const _params = new URLSearchParams()`)
@@ -91,7 +100,7 @@ function generateHandler(tool: MCPToolDefinition): string {
         lines.push(`      if (params.${p} !== undefined) _params.set(${JSON.stringify(p)}, String(params.${p}))`)
       }
     }
-    urlExpr = `\`\${BASE_URL}${httpPath.replace(/\{([^}]+)\}/g, '${params.$1}')}?\${_params.toString()}\``
+    urlExpr = `\`\${BASE_URL}${httpPath.replace(/\{([^}]+)\}/g, '${encodeURIComponent(String(params.$1))}')}?\${_params.toString()}\``
   }
 
   lines.push(`      const url = ${urlExpr}`)

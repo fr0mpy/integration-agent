@@ -50,6 +50,16 @@ export interface DiscoveryResult {
   warnings: string[]
 }
 
+function groupEndpoints(endpoints: DiscoveredEndpoint[]): Record<string, DiscoveredEndpoint[]> {
+  const groups: Record<string, DiscoveredEndpoint[]> = {}
+  for (const ep of endpoints) {
+    const segment = ep.path.split('/').filter(Boolean)[0] ?? '_root'
+    if (!groups[segment]) groups[segment] = []
+    groups[segment].push(ep)
+  }
+  return groups
+}
+
 import { z } from 'zod'
 import { generateText, Output } from 'ai'
 import { synthesisModel, buildTags } from '../ai/gateway'
@@ -149,19 +159,11 @@ export async function enrichDiscovery(
       result.warnings.push(`Enrichment selected ${enrichedEndpoints.length} of ${result.endpointCount} endpoints (dropped ${droppedCount})`)
     }
 
-    const groups: Record<string, DiscoveredEndpoint[]> = {}
-
-    for (const ep of enrichedEndpoints) {
-      const segment = ep.path.split('/').filter(Boolean)[0] ?? '_root'
-      if (!groups[segment]) groups[segment] = []
-      groups[segment].push(ep)
-    }
-
     return {
       ...result,
       endpoints: enrichedEndpoints,
       endpointCount: enrichedEndpoints.length,
-      groups,
+      groups: groupEndpoints(enrichedEndpoints),
     }
   } catch (err) {
     console.error('Enrichment failed:', err instanceof Error ? err.message : 'unknown')
@@ -225,13 +227,6 @@ export async function discoverEndpoints(spec: Record<string, unknown>): Promise<
     }
   }
 
-  const groups: Record<string, DiscoveredEndpoint[]> = {}
-  for (const ep of endpoints) {
-    const segment = ep.path.split('/').filter(Boolean)[0] ?? '_root'
-    if (!groups[segment]) groups[segment] = []
-    groups[segment].push(ep)
-  }
-
   if (deprecatedCount > 0) {
     warnings.push(`Filtered ${deprecatedCount} deprecated endpoint${deprecatedCount > 1 ? 's' : ''}`)
   }
@@ -244,7 +239,7 @@ export async function discoverEndpoints(spec: Record<string, unknown>): Promise<
     authHeader,
     endpointCount: endpoints.length,
     endpoints,
-    groups,
+    groups: groupEndpoints(endpoints),
     warnings,
   }
 }

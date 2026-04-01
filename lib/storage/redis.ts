@@ -77,17 +77,3 @@ export const lock = {
     await safeRedis('lock release', () => redis.del(`lock:${key}`))
   },
 }
-
-export const specCache = {
-  get(specHash: string) {
-    return safeRedis('spec read', () =>
-      redis.get<Record<string, unknown>>(`spec:${specHash}`),
-    )
-  },
-
-  set(specHash: string, spec: Record<string, unknown>) {
-    return safeRedis('spec write', () =>
-      redis.set(`spec:${specHash}`, spec, { ex: CACHE_TTL_SECONDS }),
-    )
-  },
-}

@@ -48,7 +48,7 @@ export function SpecInput() {
       })
 
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
+        const data = await res.json().catch((e) => { console.warn('Failed to parse error response:', e); return {} })
         throw new Error(data.error || `Request failed (${res.status})`)
       }
 
