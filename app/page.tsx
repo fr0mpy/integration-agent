@@ -63,6 +63,12 @@ function statusInfo(integration: IntegrationSummary): {
         className: "border-blue-500/50 text-blue-400",
         pulse: true,
       };
+    case "validating":
+      return {
+        label: "Validating",
+        className: "border-blue-500/50 text-blue-400",
+        pulse: true,
+      };
     case "live":
       return {
         label: "Deployed",
@@ -77,8 +83,8 @@ function statusInfo(integration: IntegrationSummary): {
       };
     default:
       return {
-        label: "Deployed",
-        className: "border-emerald-500/40 text-emerald-400",
+        label: "In progress",
+        className: "border-zinc-500/40 text-zinc-400",
         pulse: false,
       };
   }

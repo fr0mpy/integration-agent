@@ -27,17 +27,35 @@
       "failIntegration": {
         "stepId": "step//./lib/pipeline/index//failIntegration"
       },
+      "persistDeployment": {
+        "stepId": "step//./lib/pipeline/index//persistDeployment"
+      },
       "persistValidation": {
         "stepId": "step//./lib/pipeline/index//persistValidation"
       },
       "runCodegen": {
         "stepId": "step//./lib/pipeline/index//runCodegen"
       },
+      "runCreateGitHubPR": {
+        "stepId": "step//./lib/pipeline/index//runCreateGitHubPR"
+      },
+      "runCreateVercelProject": {
+        "stepId": "step//./lib/pipeline/index//runCreateVercelProject"
+      },
+      "runDeleteGitHubWebhook": {
+        "stepId": "step//./lib/pipeline/index//runDeleteGitHubWebhook"
+      },
       "runDiscovery": {
         "stepId": "step//./lib/pipeline/index//runDiscovery"
       },
+      "runEnsureMonorepo": {
+        "stepId": "step//./lib/pipeline/index//runEnsureMonorepo"
+      },
       "runSynthesis": {
         "stepId": "step//./lib/pipeline/index//runSynthesis"
+      },
+      "runSynthesisWithBuildErrors": {
+        "stepId": "step//./lib/pipeline/index//runSynthesisWithBuildErrors"
       },
       "runValidateSandbox": {
         "stepId": "step//./lib/pipeline/index//runValidateSandbox"

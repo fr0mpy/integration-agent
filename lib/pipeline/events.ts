@@ -10,6 +10,7 @@ export type PipelineStatus =
   | 'tool_complete'
   | 'building'
   | 'done'
+  | 'retrying'
 
 export interface ValidateEventData {
   sourceCode?: string
@@ -21,6 +22,21 @@ export interface ValidateEventData {
   errors?: string
 }
 
+export interface DeployEventData {
+  step?: 'create-repo' | 'push-files' | 'pr-open' | 'await-merge' | 'merged' | 'deploying' | 'live'
+  prUrl?: string
+  prTitle?: string
+  repoUrl?: string
+  repoName?: string
+  prStatus?: 'open' | 'merged'
+  waitMessage?: string
+  buildLog?: string
+  mcpUrl?: string
+  deploymentId?: string
+  verifiedTools?: string[]
+  error?: string
+}
+
 export interface PipelineEvent {
   stage: PipelineStage
   status: PipelineStatus
@@ -29,6 +45,7 @@ export interface PipelineEvent {
     | MCPServerConfig
     | MCPToolDefinition
     | ValidateEventData
+    | DeployEventData
     | { error: string }
     | null
   timestamp: number

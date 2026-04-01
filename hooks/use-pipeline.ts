@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { PipelineEvent, PipelineStage, ValidateEventData } from '@/lib/pipeline/events'
+import type { PipelineEvent, PipelineStage, ValidateEventData, DeployEventData } from '@/lib/pipeline/events'
 import type { DiscoveryResult } from '@/lib/pipeline/discover'
 import type { MCPToolDefinition, MCPServerConfig } from '@/lib/mcp/types'
 
@@ -15,12 +15,27 @@ export interface PipelineState {
   sourceCode: string | null
   /** Streaming build log lines from the sandbox VM */
   buildLog: string[]
+  /** True while a build-error retry is in-flight */
+  buildRetrying: boolean
+  /** The raw build error that triggered the retry */
+  buildErrors: string | null
   /** Verified tool names returned by the live MCP server in the sandbox */
   verifiedTools: string[]
   /** Live sandbox URL — available after validate completes */
   sandboxUrl: string | null
   error: string | null
   connected: boolean
+  // deploy-mcp stage
+  deployStep: DeployEventData['step'] | null
+  deployPrUrl: string | null
+  deployPrTitle: string | null
+  deployRepoUrl: string | null
+  deployRepoName: string | null
+  deployWaitMessage: string | null
+  deployPrStatus: 'open' | 'merged' | null
+  deployBuildLog: string[]
+  deployMcpUrl: string | null
+  deploymentId: string | null
 }
 
 const INITIAL_STAGE_STATUS: PipelineState['stageStatus'] = {
@@ -43,10 +58,22 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
     config: null,
     sourceCode: null,
     buildLog: [],
+    buildRetrying: false,
+    buildErrors: null,
     verifiedTools: [],
     sandboxUrl: null,
     error: null,
     connected: false,
+    deployStep: null,
+    deployPrUrl: null,
+    deployPrTitle: null,
+    deployRepoUrl: null,
+    deployRepoName: null,
+    deployWaitMessage: null,
+    deployPrStatus: null,
+    deployBuildLog: [],
+    deployMcpUrl: null,
+    deploymentId: null,
   })
 
   // Fetch cached config directly (no SSE)
@@ -98,14 +125,33 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
       if (event.status === 'running') {
         next.currentStage = event.stage
         next.stageStatus[event.stage] = 'running'
+
         // preview-mcp 'running' event carries the generated source code
         if (event.stage === 'preview-mcp' && event.data) {
           const d = event.data as ValidateEventData
           if (d.sourceCode) next.sourceCode = d.sourceCode
+          next.buildRetrying = false
         }
-      } else if (event.status === 'building' && event.stage === 'preview-mcp' && event.data) {
-        const d = event.data as ValidateEventData
-        if (d.buildLog) next.buildLog = [...prev.buildLog, d.buildLog]
+
+        if (event.stage === 'deploy-mcp' && event.data) {
+          const d = event.data as DeployEventData
+          if (d.step !== undefined) next.deployStep = d.step
+          if (d.prUrl) next.deployPrUrl = d.prUrl
+          if (d.prTitle) next.deployPrTitle = d.prTitle
+          if (d.repoUrl) next.deployRepoUrl = d.repoUrl
+          if (d.repoName) next.deployRepoName = d.repoName
+          if (d.prStatus) next.deployPrStatus = d.prStatus
+          if (d.waitMessage) next.deployWaitMessage = d.waitMessage
+        }
+      } else if (event.status === 'building') {
+        if (event.stage === 'preview-mcp' && event.data) {
+          const d = event.data as ValidateEventData
+          if (d.buildLog) next.buildLog = [...prev.buildLog, d.buildLog]
+        }
+        if (event.stage === 'deploy-mcp' && event.data) {
+          const d = event.data as DeployEventData
+          if (d.buildLog) next.deployBuildLog = [...prev.deployBuildLog, d.buildLog]
+        }
       } else if (event.status === 'complete') {
         next.stageStatus[event.stage] = 'complete'
 
@@ -117,9 +163,23 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
           const d = event.data as ValidateEventData
           if (d.verifiedTools) next.verifiedTools = d.verifiedTools
           if (d.sandboxUrl) next.sandboxUrl = d.sandboxUrl
+        } else if (event.stage === 'deploy-mcp' && event.data) {
+          const d = event.data as DeployEventData
+          if (d.step !== undefined) next.deployStep = d.step
+          if (d.mcpUrl) next.deployMcpUrl = d.mcpUrl
+          if (d.deploymentId) next.deploymentId = d.deploymentId
+          if (d.prUrl) next.deployPrUrl = d.prUrl
+          if (d.repoUrl) next.deployRepoUrl = d.repoUrl
         }
       } else if (event.status === 'tool_complete' && event.data) {
         next.tools = [...prev.tools, event.data as MCPToolDefinition]
+      } else if (event.status === 'retrying') {
+        if (event.stage === 'preview-mcp' && event.data) {
+          const d = event.data as ValidateEventData
+          next.buildRetrying = true
+          next.buildErrors = d.errors ?? null
+          next.buildLog = []
+        }
       } else if (event.status === 'done') {
         terminalRef.current = true
       } else if (event.status === 'failed') {

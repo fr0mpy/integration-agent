@@ -21,6 +21,8 @@ interface CodeViewerProps {
    * In cached mode this is null and all files come from the API.
    */
   sourceCode?: string | null
+  /** True while the sandbox is being built — defers the file fetch and shows skeleton */
+  sandboxBuilding?: boolean
 }
 
 const FILE_ORDER = [
@@ -41,19 +43,23 @@ function getExtensions(file: string) {
   return [javascript({ typescript: true })]
 }
 
-export function CodeViewer({ integrationId, sourceCode }: CodeViewerProps) {
+export function CodeViewer({ integrationId, sourceCode, sandboxBuilding }: CodeViewerProps) {
   const [files, setFiles] = useState<BundledFile[]>([])
   const [activeFile, setActiveFile] = useState(FILE_ORDER[0])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    // Stay in loading skeleton while the sandbox is still being built
+    if (sandboxBuilding) return
+
     async function load() {
+      setError(null)
+      setLoading(true)
       try {
         const res = await fetch(`/api/integrate/${integrationId}/files`)
         if (!res.ok) throw new Error('Failed to load generated files')
         const { files: loaded } = await res.json() as { files: BundledFile[] }
-        // Sort by canonical order
         const sorted = FILE_ORDER
           .map((name) => loaded.find((f) => f.file === name))
           .filter((f): f is BundledFile => f != null)
@@ -65,14 +71,17 @@ export function CodeViewer({ integrationId, sourceCode }: CodeViewerProps) {
       }
     }
     load()
-  }, [integrationId])
+  }, [integrationId, sandboxBuilding])
 
-  // Override route.ts with the live codegen output when available.
-  // This ensures we show the current run's source, not the stale Redis cache.
+  // Override route.ts with live SSE data when available.
+  // If the files fetch hasn't completed yet (or raced and failed), synthesise a
+  // minimal entry so the viewer can render immediately without waiting for the API.
   const displayFiles = sourceCode
-    ? files.map((f) =>
-        f.file === 'app/[transport]/route.ts' ? { ...f, data: sourceCode } : f,
-      )
+    ? files.length > 0
+      ? files.map((f) =>
+          f.file === 'app/[transport]/route.ts' ? { ...f, data: sourceCode } : f,
+        )
+      : [{ file: 'app/[transport]/route.ts', data: sourceCode }]
     : files
 
   const activeContent = displayFiles.find((f) => f.file === activeFile)?.data ?? ''
@@ -85,14 +94,14 @@ export function CodeViewer({ integrationId, sourceCode }: CodeViewerProps) {
             <div key={f} className="h-7 w-20 animate-pulse rounded-t bg-zinc-800" />
           ))}
         </div>
-        <div className="flex flex-1 items-center justify-center">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300" />
+        <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+          Initializing…
         </div>
       </div>
     )
   }
 
-  if (error) {
+  if (error && displayFiles.length === 0) {
     return (
       <div className="flex h-[520px] items-center justify-center rounded-lg border border-red-500/25 bg-zinc-950 text-sm text-red-400">
         {error}

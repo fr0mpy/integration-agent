@@ -7,6 +7,7 @@ function getDb() {
 export const INTEGRATION_STATUS = {
   PENDING: 'pending',
   SYNTHESISING: 'synthesising',
+  VALIDATING: 'validating',
   DEPLOYING: 'deploying',
   LIVE: 'live',
   FAILED: 'failed',
@@ -61,6 +62,9 @@ export async function updateIntegration(
     verified_tools?: string[]
     validated_at?: string
     live_validated_at?: string
+    github_repo_url?: string
+    github_pr_url?: string
+    github_repo_name?: string
   }
 ): Promise<boolean> {
   if (!process.env.DATABASE_URL) {
@@ -94,6 +98,12 @@ export async function updateIntegration(
       queries.push(sql`UPDATE integrations SET validated_at = ${updates.validated_at} WHERE id = ${id}`)
     if (updates.live_validated_at !== undefined)
       queries.push(sql`UPDATE integrations SET live_validated_at = ${updates.live_validated_at} WHERE id = ${id}`)
+    if (updates.github_repo_url !== undefined)
+      queries.push(sql`UPDATE integrations SET github_repo_url = ${updates.github_repo_url} WHERE id = ${id}`)
+    if (updates.github_pr_url !== undefined)
+      queries.push(sql`UPDATE integrations SET github_pr_url = ${updates.github_pr_url} WHERE id = ${id}`)
+    if (updates.github_repo_name !== undefined)
+      queries.push(sql`UPDATE integrations SET github_repo_name = ${updates.github_repo_name} WHERE id = ${id}`)
 
     if (queries.length > 0) await Promise.all(queries)
 
@@ -195,6 +205,11 @@ export const CREATE_TABLE_SQL = `
   ALTER TABLE integrations ADD COLUMN IF NOT EXISTS verified_tools TEXT[];
   ALTER TABLE integrations ADD COLUMN IF NOT EXISTS validated_at TIMESTAMPTZ;
   ALTER TABLE integrations ADD COLUMN IF NOT EXISTS live_validated_at TIMESTAMPTZ;
+
+  -- Migration: GitHub PR deployment tracking
+  ALTER TABLE integrations ADD COLUMN IF NOT EXISTS github_repo_url TEXT;
+  ALTER TABLE integrations ADD COLUMN IF NOT EXISTS github_pr_url TEXT;
+  ALTER TABLE integrations ADD COLUMN IF NOT EXISTS github_repo_name TEXT;
 
   CREATE TABLE IF NOT EXISTS credentials (
     integration_id TEXT PRIMARY KEY REFERENCES integrations(id),

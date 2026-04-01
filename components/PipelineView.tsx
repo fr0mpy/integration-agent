@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { usePipeline, type PipelineState } from '@/hooks/use-pipeline'
+import { usePipeline } from '@/hooks/use-pipeline'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -77,8 +77,6 @@ export function PipelineView({
   const [activeTab, setActiveTab] = useState<PipelineStage>(() =>
     parseTabParam(searchParams.get('tab')),
   )
-  const userSelectedRef = useRef(false)
-
   // Sync URL → state on popstate / external navigation
   useEffect(() => {
     const paramTab = parseTabParam(searchParams.get('tab'))
@@ -88,25 +86,10 @@ export function PipelineView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
 
-  // Auto-advance to the running stage unless user manually selected a tab
-  useEffect(() => {
-    if (state.currentStage && !userSelectedRef.current) {
-      setActiveTab(state.currentStage)
-      // Update URL without scroll
-      const params = new URLSearchParams(searchParams.toString())
-      params.set('tab', state.currentStage)
-      router.replace(`?${params.toString()}`, { scroll: false })
-    }
-    // Reset manual flag when a new stage starts
-    userSelectedRef.current = false
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.currentStage])
-
   const isConnecting = !state.connected && !state.discovery && !state.error
 
   const handleTabChange = useCallback((value: unknown) => {
     const tab = value as PipelineStage
-    userSelectedRef.current = true
     setActiveTab(tab)
     // Sync to URL
     const params = new URLSearchParams(searchParams.toString())
@@ -235,6 +218,8 @@ export function PipelineView({
             authMethod={authMethod}
             initialHasCredentials={initialHasCredentials}
             initialLiveValidatedAt={initialLiveValidatedAt}
+            buildRetrying={state.buildRetrying}
+            buildErrors={state.buildErrors}
           />
         </StagePanel>
       </TabsContent>
@@ -289,7 +274,7 @@ function StagePanel({
     )
   }
 
-  if (status === 'running') {
+  if (status === 'running' && stage !== 'preview-mcp') {
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3 py-2">

@@ -10,6 +10,7 @@ interface ChatPanelProps {
   integrationId: string
   sandboxUrl: string | null
   validatedAt?: string | null
+  sandboxBuilding?: boolean
 }
 
 // ── Reasoning block ──────────────────────────────────────────────────────────
@@ -197,7 +198,7 @@ const SUGGESTIONS = [
   'Walk me through what happens when a tool is called',
 ]
 
-export function ChatPanel({ integrationId, sandboxUrl, validatedAt }: ChatPanelProps) {
+export function ChatPanel({ integrationId, sandboxUrl, validatedAt, sandboxBuilding }: ChatPanelProps) {
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -223,23 +224,13 @@ export function ChatPanel({ integrationId, sandboxUrl, validatedAt }: ChatPanelP
   }
 
   return (
-    <div className="flex h-[520px] flex-col overflow-hidden rounded-lg border border-border bg-zinc-950">
+    <div className={cn(
+      "flex h-130 flex-col overflow-hidden rounded-lg border border-border bg-zinc-950 transition-all duration-300",
+      sandboxBuilding && "pointer-events-none select-none blur-sm opacity-50"
+    )}>
       {/* Header */}
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2.5">
         <span className="text-xs font-medium text-zinc-300">MCP Inspector</span>
-        {sandboxUrl ? (
-          <span className="ml-auto rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-400">
-            live sandbox
-          </span>
-        ) : validatedAt ? (
-          <span className="ml-auto rounded-full bg-zinc-700/40 px-2 py-0.5 text-[10px] text-zinc-500">
-            sandbox expired
-          </span>
-        ) : (
-          <span className="ml-auto rounded-full bg-zinc-800/60 px-2 py-0.5 text-[10px] text-zinc-600">
-            no sandbox
-          </span>
-        )}
       </div>
 
       {/* Messages */}
@@ -252,7 +243,8 @@ export function ChatPanel({ integrationId, sandboxUrl, validatedAt }: ChatPanelP
                 <button
                   key={s}
                   onClick={() => handleSubmit(s)}
-                  className="rounded-md border border-zinc-700/50 bg-zinc-900/50 px-3 py-2 text-left text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200"
+                  disabled={sandboxBuilding}
+                  className="rounded-md border border-zinc-700/50 bg-zinc-900/50 px-3 py-2 text-left text-xs text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-200 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {s}
                 </button>
@@ -295,12 +287,12 @@ export function ChatPanel({ integrationId, sandboxUrl, validatedAt }: ChatPanelP
             }}
             placeholder="Ask about a tool, call a live endpoint…"
             rows={2}
-            disabled={isStreaming}
+            disabled={isStreaming || sandboxBuilding}
             className="flex-1 resize-none rounded-md border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs text-zinc-200 placeholder-zinc-600 outline-none focus:border-zinc-500 disabled:opacity-50"
           />
           <button
             type="submit"
-            disabled={!input.trim() || isStreaming}
+            disabled={!input.trim() || isStreaming || sandboxBuilding}
             className="shrink-0 rounded-md bg-zinc-700 px-3 py-2 text-xs text-zinc-200 transition-colors hover:bg-zinc-600 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {isStreaming ? '…' : 'Send'}

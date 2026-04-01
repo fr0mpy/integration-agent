@@ -10,6 +10,7 @@ export interface SandboxResult {
   sandboxUrl: string
   sandboxId: string | null
   errors?: string
+  buildLogs: string[]
 }
 
 const SANDBOX_LIVE_TIMEOUT_MS = 30 * 60 * 1000  // keep alive for chat use
@@ -28,9 +29,9 @@ const SERVER_WARMUP_MS = 3_000
 export async function runSandboxCheck(
   bundle: BundleResult,
   config: MCPServerConfig,
-  onLog?: (log: string) => void,
 ): Promise<SandboxResult> {
   const snapshotId = process.env.SANDBOX_SNAPSHOT_ID
+  const logs: string[] = []
 
   let sandbox: Sandbox
   try {
@@ -49,6 +50,7 @@ export async function runSandboxCheck(
       sandboxUrl: '',
       sandboxId: null,
       errors: `Sandbox creation failed: ${err instanceof Error ? err.message : String(err)}`,
+      buildLogs: [],
     }
   }
 
@@ -62,27 +64,27 @@ export async function runSandboxCheck(
       })),
     )
 
-    onLog?.('Installing dependencies...')
+    logs.push('Installing dependencies...')
 
     // npm install
     const install = await sandbox.runCommand('npm', ['install', '--prefer-offline'])
     if (install.exitCode !== 0) {
       failed = true
       const stderr = await install.stderr()
-      return { ok: false, verifiedTools: [], sandboxUrl: '', sandboxId: null, errors: stderr }
+      return { ok: false, verifiedTools: [], sandboxUrl: '', sandboxId: null, errors: stderr, buildLogs: logs }
     }
 
-    onLog?.('Building...')
+    logs.push('Building...')
 
     // next build
     const build = await sandbox.runCommand('npm', ['run', 'build'])
     if (build.exitCode !== 0) {
       failed = true
       const stderr = await build.stderr()
-      return { ok: false, verifiedTools: [], sandboxUrl: '', sandboxId: null, errors: stderr }
+      return { ok: false, verifiedTools: [], sandboxUrl: '', sandboxId: null, errors: stderr, buildLogs: logs }
     }
 
-    onLog?.('Starting MCP server...')
+    logs.push('Starting MCP server...')
 
     // Start server in background
     await sandbox.runCommand({ cmd: 'npm', args: ['start'], detached: true })
@@ -91,7 +93,7 @@ export async function runSandboxCheck(
     await new Promise((resolve) => setTimeout(resolve, SERVER_WARMUP_MS))
 
     const sandboxUrl = sandbox.domain(3000)
-    onLog?.(`Server live at ${sandboxUrl}`)
+    logs.push(`Server live at ${sandboxUrl}`)
 
     // Connect MCP client and call list_tools — always close client in finally
     const client = new Client({ name: 'integration-agent-validator', version: '1.0.0' })
@@ -118,13 +120,14 @@ export async function runSandboxCheck(
         sandboxUrl,
         sandboxId: null,
         errors: `Missing tools in live server: ${missing.join(', ')}`,
+        buildLogs: logs,
       }
     }
 
-    onLog?.(`${returnedNames.length}/${expectedNames.length} tools verified`)
+    logs.push(`${returnedNames.length}/${expectedNames.length} tools verified`)
 
     // Success — leave sandbox running (30 min TTL) for chat callTool use
-    return { ok: true, verifiedTools: returnedNames, sandboxUrl, sandboxId: sandbox.sandboxId }
+    return { ok: true, verifiedTools: returnedNames, sandboxUrl, sandboxId: sandbox.sandboxId, buildLogs: logs }
   } finally {
     // Only stop on failure — successful sandboxes stay alive for the chat panel
     if (failed) await sandbox.stop()

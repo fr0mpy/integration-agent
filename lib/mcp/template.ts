@@ -110,10 +110,8 @@ function generateHandler(tool: MCPToolDefinition): string {
       .join(', ')
     lines.push(`      const body = JSON.stringify({ ${bodyObj} })`)
     if (authRequired) {
-      fetchOpts.push(`headers: { 'Authorization': \`Bearer \${creds.apiKey}\`, 'Content-Type': 'application/json' }`)
-      // remove the plain auth header we added above
-      fetchOpts.splice(fetchOpts.findIndex((l) => l.startsWith('headers:')), 1)
-      fetchOpts.push(`headers: { 'Authorization': \`Bearer \${creds.apiKey}\`, 'Content-Type': 'application/json' }`)
+      const idx = fetchOpts.findIndex((l) => l.startsWith('headers:'))
+      fetchOpts[idx] = `headers: { 'Authorization': \`Bearer \${creds.apiKey}\`, 'Content-Type': 'application/json' }`
     } else {
       fetchOpts.push(`headers: { 'Content-Type': 'application/json' }`)
     }

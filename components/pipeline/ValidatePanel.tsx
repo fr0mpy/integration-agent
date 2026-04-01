@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { Loader2 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { CodeViewer } from './CodeViewer'
 import { ChatPanel } from './ChatPanel'
 import type { RevalidateResponse } from '@/app/api/integrate/[integrationId]/revalidate/route'
@@ -24,6 +24,10 @@ interface ValidatePanelProps {
   initialHasCredentials: boolean
   /** ISO timestamp of when live API validation last passed */
   initialLiveValidatedAt: string | null
+  /** True while a build-error retry is in-flight */
+  buildRetrying: boolean
+  /** The raw build error that triggered the retry */
+  buildErrors: string | null
 }
 
 function credentialLabel(authMethod: string | null): string {
@@ -43,6 +47,8 @@ export function ValidatePanel({
   authMethod,
   initialHasCredentials,
   initialLiveValidatedAt,
+  buildRetrying,
+  buildErrors,
 }: ValidatePanelProps) {
   const [credential, setCredential] = useState('')
   const [saving, setSaving] = useState(false)
@@ -51,8 +57,6 @@ export function ValidatePanel({
   const [liveValidatedAt, setLiveValidatedAt] = useState<string | null>(initialLiveValidatedAt)
   const [liveResults, setLiveResults] = useState<RevalidateResponse['results'] | null>(null)
   const [credError, setCredError] = useState<string | null>(null)
-
-  const liveVerifiedTools = new Set(liveResults?.filter((r) => r.ok).map((r) => r.toolName) ?? [])
 
   async function handleSave() {
     if (!credential.trim()) return
@@ -132,9 +136,11 @@ export function ValidatePanel({
   }
 
   const showCredentialSection = authMethod && authMethod !== 'none'
+  const sandboxBuilding = validateStatus !== 'complete'
 
   return (
     <div className="space-y-4">
+
       {/* Sandbox status banner */}
       {sandboxUrl ? (
         <div className="flex items-center gap-2 rounded-md border border-emerald-500/20 bg-emerald-950/20 px-3 py-2">
@@ -238,85 +244,46 @@ export function ValidatePanel({
         </div>
       )}
 
+      {/* Build-error retry banner */}
+      {buildRetrying && (
+        <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-3 text-sm">
+          <div className="flex items-center gap-2 font-medium text-yellow-400">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Build error detected — re-synthesising with AI…
+          </div>
+          {buildErrors && (
+            <pre className="mt-2 max-h-32 overflow-y-auto whitespace-pre-wrap font-mono text-xs text-zinc-400">
+              {buildErrors}
+            </pre>
+          )}
+        </div>
+      )}
+
       {/* Two-panel layout: code viewer + chat */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[3fr_2fr]">
-        <CodeViewer integrationId={integrationId} sourceCode={sourceCode} />
-        <ChatPanel integrationId={integrationId} sandboxUrl={sandboxUrl} validatedAt={validatedAt} />
+        <CodeViewer integrationId={integrationId} sourceCode={sourceCode} sandboxBuilding={sandboxBuilding} />
+        <ChatPanel integrationId={integrationId} sandboxUrl={sandboxUrl} validatedAt={validatedAt} sandboxBuilding={sandboxBuilding} />
       </div>
 
       {/* Build log */}
-      {buildLog.length > 0 && (
+      {(sandboxBuilding || buildLog.length > 0) && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Build log</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <pre className="max-h-48 overflow-y-auto rounded-b-lg bg-zinc-950 p-4 text-xs leading-relaxed text-zinc-400">
-              {buildLog.join('\n')}
+              {buildLog.length > 0 ? buildLog.join('\n') : (
+                <span className="flex items-center gap-2">
+                  <span className="inline-block h-2 w-2 animate-spin rounded-full border border-zinc-600 border-t-zinc-300" />
+                  Starting sandbox…
+                </span>
+              )}
             </pre>
           </CardContent>
         </Card>
       )}
 
-      {/* Verified tools — dual badge tiers */}
-      {(validateStatus === 'complete' || validatedAt) && verifiedTools.length > 0 && (
-        <Card className="border-zinc-700/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm font-medium text-zinc-300">
-              <span className="text-emerald-400">✓</span>
-              {verifiedTools.length} tools verified
-              {liveValidatedAt && (
-                <Badge variant="outline" className="ml-1 border-emerald-500/40 text-[10px] text-emerald-400">
-                  API verified
-                </Badge>
-              )}
-              {validatedAt && (
-                <span className="ml-auto text-[10px] font-normal text-zinc-500">
-                  {relativeTime(validatedAt)}
-                </span>
-              )}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-1.5">
-              {verifiedTools.map((name) => {
-                const isLive = liveVerifiedTools.has(name)
-                return (
-                  <Badge
-                    key={name}
-                    variant="outline"
-                    className={
-                      isLive
-                        ? 'border-emerald-500/40 font-mono text-xs text-emerald-400'
-                        : 'border-blue-500/30 font-mono text-xs text-blue-400'
-                    }
-                    title={isLive ? 'API verified — real call succeeded' : 'MCP verified — protocol + compile check'}
-                  >
-                    {name}
-                    {isLive && <span className="ml-1 text-emerald-500">✓</span>}
-                  </Badge>
-                )
-              })}
-            </div>
-            {verifiedTools.length > 0 && (
-              <div className="mt-2 flex gap-3 text-[10px] text-zinc-600">
-                <span><span className="text-blue-400">■</span> MCP verified</span>
-                {liveVerifiedTools.size > 0 && (
-                  <span><span className="text-emerald-400">■</span> API verified</span>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Starting sandbox indicator */}
-      {validateStatus === 'running' && buildLog.length === 0 && (
-        <div className="flex items-center gap-3 py-2 text-sm text-muted-foreground">
-          <div className="h-3 w-3 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300" />
-          Starting sandbox…
-        </div>
-      )}
     </div>
   )
 }
