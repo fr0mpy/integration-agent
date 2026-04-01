@@ -89,8 +89,8 @@ describe('generateServerSource', () => {
     }
 
     const source = generateServerSource(config)
-    // Path param should be interpolated, not sent as query param
-    expect(source).toContain('${params.id}')
+    // Path param should be interpolated with encodeURIComponent, not sent as query param
+    expect(source).toContain('${encodeURIComponent(String(params.id))}')
     expect(source).not.toContain("_params.set('id'")
   })
 

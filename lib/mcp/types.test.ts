@@ -128,7 +128,7 @@ describe('MCPServerConfigSchema', () => {
   })
 
   it('rejects invalid authMethod', () => {
-    const result = MCPServerConfigSchema.safeParse({ ...validConfig, authMethod: 'oauth2' })
+    const result = MCPServerConfigSchema.safeParse({ ...validConfig, authMethod: 'token-exchange' })
     expect(result.success).toBe(false)
   })
 
