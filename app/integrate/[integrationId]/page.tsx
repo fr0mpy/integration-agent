@@ -1,10 +1,9 @@
 import { notFound } from 'next/navigation'
 import { PipelineView } from '@/components/PipelineView'
 import { getIntegration, hasCredentials } from '@/lib/storage/neon'
+import { isValidUUID } from '@/lib/validation'
 import { configCache } from '@/lib/storage/redis'
 import type { MCPServerConfig } from '@/lib/mcp/types'
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export default async function IntegrationPage({
   params,
@@ -13,7 +12,7 @@ export default async function IntegrationPage({
 }) {
   const { integrationId } = await params
 
-  if (!UUID_RE.test(integrationId)) {
+  if (!isValidUUID(integrationId)) {
     notFound()
   }
 
@@ -44,6 +43,10 @@ export default async function IntegrationPage({
         authMethod={authMethod}
         initialHasCredentials={credentialsExist}
         initialLiveValidatedAt={integration.live_validated_at ?? null}
+        initialPrUrl={integration.github_pr_url ?? null}
+        initialRepoUrl={integration.github_repo_url ?? null}
+        initialMcpUrl={integration.mcp_url ?? null}
+        initialStatus={integration.status}
       />
     </main>
   )

@@ -1,6 +1,7 @@
 import { getRun } from 'workflow/api'
 import { getIntegration } from '@/lib/storage/neon'
 import { configCache, discoveryCache } from '@/lib/storage/redis'
+import { success, errors } from '@/lib/api/response'
 import type { PipelineEvent } from '@/lib/pipeline/events'
 
 import { isValidUUID } from '@/lib/validation'
@@ -55,10 +56,10 @@ export async function GET(
       ])
 
       if (!config) {
-        return Response.json({ error: 'Cached config not found.' }, { status: 404 })
+        return errors.notFound('Cached config not found.')
       }
 
-      return Response.json({ config, discovery: discovery ?? null })
+      return success({ config, discovery: discovery ?? null })
     }
 
     // Poll for run_id — handles race where workflow start hasn't written it yet

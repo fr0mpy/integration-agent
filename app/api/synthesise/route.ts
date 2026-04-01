@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'crypto'
 import { z } from 'zod'
 import { Ratelimit } from '@upstash/ratelimit'
-import { redis, urlCache, configCache, specCache, lock } from '@/lib/storage/redis'
+import { redis, urlCache, configCache, lock } from '@/lib/storage/redis'
 import { createIntegration, updateIntegration } from '@/lib/storage/neon'
 import { validateAndFetchSpec, ValidationError } from '@/lib/validation'
 import { success, errors } from '@/lib/api/response'
@@ -19,10 +19,9 @@ const bodySchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const ip = req.headers.get('x-vercel-forwarded-for')
-      ?? req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
-      ?? req.headers.get('x-real-ip')
-      ?? 'anonymous'
+    // Trust only x-vercel-forwarded-for — set by Vercel's edge and not spoofable.
+    // x-forwarded-for and x-real-ip are client-controlled and must not be trusted.
+    const ip = req.headers.get('x-vercel-forwarded-for') ?? 'anonymous'
 
     // Fail-closed: if Redis is unavailable, deny rather than proceed unthrottled
     let rateLimitAllowed: boolean
@@ -66,9 +65,6 @@ export async function POST(req: Request) {
     }
 
     try {
-      // Store raw spec so the pipeline can retrieve it by hash
-      await specCache.set(specHash, spec)
-
       const integrationId = randomUUID()
       const created = await createIntegration(integrationId, specHash, specUrl)
       if (!created) return errors.internal()

@@ -16,7 +16,12 @@ export const MCPToolSchema = z.object({
     required: z.array(z.string()),
   }),
   httpMethod: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
-  httpPath: z.string().startsWith('/'),
+  // Reject backticks, backslashes, and ${ sequences — they would escape the
+  // template literal in lib/mcp/template.ts and inject arbitrary code into generated servers.
+  httpPath: z.string().startsWith('/').refine(
+    (p) => !p.includes('`') && !p.includes('${') && !p.includes('\\'),
+    'HTTP path must not contain backticks, backslashes, or template expressions.',
+  ),
   authRequired: z.boolean(),
 })
 

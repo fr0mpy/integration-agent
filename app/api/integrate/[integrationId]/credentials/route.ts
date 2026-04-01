@@ -8,14 +8,17 @@ const postSchema = z.object({
   credential: z.string().min(1).max(512),
 })
 
+async function resolveId(params: Promise<{ integrationId: string }>): Promise<string | null> {
+  const { integrationId } = await params
+  return isValidUUID(integrationId) ? integrationId : null
+}
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ integrationId: string }> },
 ) {
-  const { integrationId } = await params
-  if (!isValidUUID(integrationId)) {
-    return errors.badRequest('Invalid integration ID.')
-  }
+  const integrationId = await resolveId(params)
+  if (!integrationId) return errors.badRequest('Invalid integration ID.')
 
   const exists = await hasCredentials(integrationId)
   return success({ hasCredentials: exists })
@@ -25,10 +28,8 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ integrationId: string }> },
 ) {
-  const { integrationId } = await params
-  if (!isValidUUID(integrationId)) {
-    return errors.badRequest('Invalid integration ID.')
-  }
+  const integrationId = await resolveId(params)
+  if (!integrationId) return errors.badRequest('Invalid integration ID.')
 
   const integration = await getIntegration(integrationId)
   if (!integration) {

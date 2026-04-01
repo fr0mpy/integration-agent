@@ -157,7 +157,7 @@ Show your reasoning clearly — explain WHY you're calling each tool before you 
             } catch (err) {
               return { ok: false, error: err instanceof Error ? err.message : String(err) }
             } finally {
-              await client.close().catch(() => {})
+              await client.close().catch(() => {}) // safe to swallow — cleanup only, not a business operation
             }
           },
         },

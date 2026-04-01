@@ -53,7 +53,7 @@ export async function POST(
 
   const encryptedValue = await getCredentials(integrationId)
   if (!encryptedValue) {
-    return Response.json({ ok: false, error: 'No credentials saved — enter an API credential first' }, { status: 400 })
+    return errors.badRequest('No credentials saved — enter an API credential first.')
   }
 
   let apiKey: string
@@ -151,7 +151,7 @@ export async function POST(
       }
     }
   } finally {
-    await client.close().catch(() => {})
+    await client.close().catch(() => {}) // safe to swallow — cleanup only, not a business operation
   }
 
   const anyOk = results.some((r) => r.ok)

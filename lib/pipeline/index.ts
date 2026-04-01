@@ -1,8 +1,9 @@
-import { getWritable } from 'workflow'
-import { createEvent, type PipelineEvent, type ValidateEventData } from './events'
+import { getWritable, createWebhook } from 'workflow'
+import { createEvent, type PipelineEvent, type ValidateEventData, type DeployEventData } from './events'
 import type { DiscoveryResult } from './discover'
 import type { MCPServerConfig } from '../mcp/types'
 import type { SandboxResult } from './sandbox-check'
+import type { GitHubPRResult, MonorepoInfo, VercelDeployResult } from './deploy'
 
 async function emitEvent(event: PipelineEvent) {
   'use step'
@@ -10,6 +11,12 @@ async function emitEvent(event: PipelineEvent) {
   const writer = writable.getWriter()
   await writer.write(event)
   writer.releaseLock()
+}
+
+async function checkDiscoveryCache(specHash: string): Promise<DiscoveryResult | null> {
+  'use step'
+  const { discoveryCache } = await import('../storage/redis')
+  return (await discoveryCache.get(specHash)) as DiscoveryResult | null
 }
 
 async function runDiscovery(spec: Record<string, unknown>): Promise<DiscoveryResult> {
@@ -43,11 +50,10 @@ async function runCodegen(config: MCPServerConfig): Promise<{ files: Array<{ fil
 async function runValidateSandbox(
   bundle: { files: Array<{ file: string; data: string }>; sourceCode: string },
   config: MCPServerConfig,
-  onLog: (log: string) => void,
 ) {
   'use step'
   const { runSandboxCheck } = await import('./sandbox-check')
-  return runSandboxCheck(bundle, config, onLog)
+  return runSandboxCheck(bundle, config)
 }
 
 async function cacheResults(specHash: string, specUrl: string, config: MCPServerConfig, discovered: DiscoveryResult) {
@@ -81,6 +87,57 @@ async function failIntegration(integrationId: string) {
   await updateIntegration(integrationId, { status: INTEGRATION_STATUS.FAILED })
 }
 
+async function runEnsureMonorepo(): Promise<MonorepoInfo> {
+  'use step'
+  const { ensureMonorepo } = await import('./deploy')
+  return ensureMonorepo()
+}
+
+async function runCreateGitHubPR(
+  integrationName: string,
+  integrationId: string,
+  files: Array<{ file: string; data: string }>,
+  monorepo: MonorepoInfo,
+  webhookUrl: string,
+): Promise<GitHubPRResult> {
+  'use step'
+  const { createGitHubPR } = await import('./deploy')
+  return createGitHubPR(integrationName, integrationId, files, monorepo, webhookUrl)
+}
+
+async function runDeleteGitHubWebhook(owner: string, repo: string, webhookId: number): Promise<void> {
+  'use step'
+  const { deleteGitHubWebhook } = await import('./deploy')
+  await deleteGitHubWebhook(owner, repo, webhookId)
+}
+
+async function runCreateVercelProject(
+  monorepo: MonorepoInfo,
+  integrationId: string,
+  integrationName: string,
+): Promise<VercelDeployResult> {
+  'use step'
+  const { createVercelProject } = await import('./deploy')
+  return createVercelProject(monorepo, integrationId, integrationName)
+}
+
+async function persistDeployment(
+  integrationId: string,
+  prResult: GitHubPRResult,
+  vercelResult: VercelDeployResult,
+) {
+  'use step'
+  const { updateIntegration, INTEGRATION_STATUS } = await import('../storage/neon')
+  await updateIntegration(integrationId, {
+    status: INTEGRATION_STATUS.LIVE,
+    mcp_url: vercelResult.mcpUrl,
+    deployment_id: vercelResult.deploymentId,
+    github_repo_url: prResult.repoUrl,
+    github_pr_url: prResult.prUrl,
+    github_repo_name: prResult.repoName,
+  })
+}
+
 /**
  * Durable synthesis pipeline.
  * Stages: Discover → Synthesise → Validate (live MCP test) → Deploy
@@ -94,12 +151,14 @@ export async function synthesisePipeline(
   'use workflow'
 
   // Track which stage is active so the catch block emits the correct failed event
-  let currentStage: 'discover-api' | 'build-mcp' | 'preview-mcp' = 'discover-api'
+  let currentStage: 'discover-api' | 'build-mcp' | 'preview-mcp' | 'deploy-mcp' = 'discover-api'
 
   try {
     // Stage 1: Discovery + Enrichment
+    // Fast path: skip AI enrichment call if we've already processed this spec before
     await emitEvent(createEvent('discover-api', 'running'))
-    const discovered = await runDiscovery(spec)
+    const cachedDiscovery = await checkDiscoveryCache(specHash)
+    const discovered = cachedDiscovery ?? await runDiscovery(spec)
     await emitEvent(createEvent('discover-api', 'complete', discovered))
 
     await setIntegrationStatus(integrationId, 'synthesising')
@@ -133,12 +192,14 @@ export async function synthesisePipeline(
     await emitEvent(createEvent('preview-mcp', 'running', { sourceCode: bundle.sourceCode } satisfies ValidateEventData))
     await setIntegrationStatus(integrationId, 'validating')
 
-    let sandboxResult = await runValidateSandbox(bundle, config, async (log) => {
+    let sandboxResult = await runValidateSandbox(bundle, config)
+    for (const log of sandboxResult.buildLogs) {
       await emitEvent(createEvent('preview-mcp', 'building', { buildLog: log } satisfies ValidateEventData))
-    })
+    }
 
     // Sandbox build failed — retry synthesis once with build errors as context
     if (!sandboxResult.ok && sandboxResult.errors) {
+      await emitEvent(createEvent('preview-mcp', 'retrying', { errors: sandboxResult.errors } satisfies ValidateEventData))
       currentStage = 'build-mcp'
       await emitEvent(createEvent('build-mcp', 'running'))
       config = await runSynthesisWithBuildErrors(discovered, sandboxResult.errors)
@@ -152,13 +213,14 @@ export async function synthesisePipeline(
       bundle = await runCodegen(config)
       await emitEvent(createEvent('preview-mcp', 'running', { sourceCode: bundle.sourceCode } satisfies ValidateEventData))
 
-      sandboxResult = await runValidateSandbox(bundle, config, async (log) => {
+      sandboxResult = await runValidateSandbox(bundle, config)
+      for (const log of sandboxResult.buildLogs) {
         await emitEvent(createEvent('preview-mcp', 'building', { buildLog: log } satisfies ValidateEventData))
-      })
+      }
     }
 
     if (!sandboxResult.ok) {
-      await emitEvent(createEvent('preview-mcp', 'failed', { errors: sandboxResult.errors } satisfies ValidateEventData))
+      await emitEvent(createEvent('preview-mcp', 'failed', { error: sandboxResult.errors ?? 'Sandbox build failed' }))
       await failIntegration(integrationId)
       await emitEvent(createEvent('preview-mcp', 'done'))
       return config
@@ -177,8 +239,100 @@ export async function synthesisePipeline(
     // Cache results only after validation passes
     await cacheResults(specHash, specUrl, config, discovered)
 
-    // Terminal event: tells the client the stream is finished (prevents spurious reconnects)
     await emitEvent(createEvent('preview-mcp', 'done'))
+
+    // ─── Stage 4: Deploy MCP ─────────────────────────────────────────────────
+    currentStage = 'deploy-mcp'
+    await emitEvent(createEvent('deploy-mcp', 'running', { step: 'create-repo' } satisfies DeployEventData))
+    await setIntegrationStatus(integrationId, 'deploying')
+
+    const monorepo = await runEnsureMonorepo()
+
+    await emitEvent(createEvent('deploy-mcp', 'running', { step: 'push-files', repoName: monorepo.repoName } satisfies DeployEventData))
+
+    // Create a Workflow webhook — GitHub will POST to this URL when the PR is merged,
+    // suspending the workflow durably instead of polling.
+    using prWebhook = createWebhook({ respondWith: Response.json({ ok: true }) })
+
+    const prResult = await runCreateGitHubPR(discovered.apiName, integrationId, bundle.files, monorepo, prWebhook.url)
+
+    // Persist PR info immediately so the UI can show the link even if the user refreshes
+    const { updateIntegration } = await import('../storage/neon')
+    await updateIntegration(integrationId, {
+      github_repo_url: prResult.repoUrl,
+      github_pr_url: prResult.prUrl,
+      github_repo_name: prResult.repoName,
+    })
+
+    await emitEvent(createEvent('deploy-mcp', 'running', {
+      step: 'pr-open',
+      prUrl: prResult.prUrl,
+      prTitle: prResult.prTitle,
+      repoUrl: prResult.repoUrl,
+      repoName: prResult.repoName,
+      prStatus: 'open',
+    } satisfies DeployEventData))
+
+    await emitEvent(createEvent('deploy-mcp', 'running', {
+      step: 'await-merge',
+      prUrl: prResult.prUrl,
+      prStatus: 'open',
+      waitMessage: 'Waiting for PR to be merged...',
+    } satisfies DeployEventData))
+
+    // Suspend workflow until GitHub fires the pull_request webhook event
+    type GHPREvent = { action?: string; pull_request?: { number: number; merged: boolean } }
+    let mergeResult = { merged: false, closedWithoutMerge: false }
+    for await (const ghRequest of prWebhook) {
+      const body = await ghRequest.json() as GHPREvent
+      if (body.pull_request?.number !== prResult.prNumber) continue
+      if (body.action === 'closed' && body.pull_request?.merged === true) {
+        mergeResult = { merged: true, closedWithoutMerge: false }
+        break
+      }
+      if (body.action === 'closed') {
+        mergeResult = { merged: false, closedWithoutMerge: true }
+        break
+      }
+    }
+    await runDeleteGitHubWebhook(prResult.repoOwner, prResult.repoName, prResult.githubWebhookId)
+
+    if (!mergeResult.merged) {
+      const reason = mergeResult.closedWithoutMerge
+        ? 'PR was closed without merging.'
+        : 'Timed out waiting for PR merge (24h limit).'
+      await emitEvent(createEvent('deploy-mcp', 'failed', { error: reason } satisfies DeployEventData))
+      await failIntegration(integrationId)
+      await emitEvent(createEvent('deploy-mcp', 'done'))
+      return config
+    }
+
+    await emitEvent(createEvent('deploy-mcp', 'running', {
+      step: 'merged',
+      prUrl: prResult.prUrl,
+      prStatus: 'merged',
+    } satisfies DeployEventData))
+
+    await emitEvent(createEvent('deploy-mcp', 'running', {
+      step: 'deploying',
+    } satisfies DeployEventData))
+
+    const vercelResult = await runCreateVercelProject(monorepo, integrationId, discovered.apiName)
+    for (const line of vercelResult.buildLogs) {
+      await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: line } satisfies DeployEventData))
+    }
+
+    await persistDeployment(integrationId, prResult, vercelResult)
+
+    await emitEvent(createEvent('deploy-mcp', 'complete', {
+      step: 'live',
+      mcpUrl: vercelResult.mcpUrl,
+      deploymentId: vercelResult.deploymentId,
+      prUrl: prResult.prUrl,
+      repoUrl: prResult.repoUrl,
+    } satisfies DeployEventData))
+
+    await emitEvent(createEvent('deploy-mcp', 'done'))
 
     return config
   } catch (err) {
