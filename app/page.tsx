@@ -3,6 +3,7 @@ import { SpecInput } from "@/components/SpecInput";
 import { listIntegrations, type IntegrationSummary } from "@/lib/storage/neon";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { relativeTime } from "@/lib/ui/time";
 
 export default async function Home() {
   const integrations = await listIntegrations(10);
@@ -14,9 +15,10 @@ export default async function Home() {
           <h1 className="text-4xl font-bold tracking-tight">
             Integration Agent
           </h1>
+          <br />
           <p className="text-lg text-zinc-400">
-            Pass in an OpenAPI spec URL and get a live MCP server deployed on
-            Vercel in under two minutes.
+            Pass in an OpenAPI spec URL and get a secure, audited, MCP server
+            deployed on Vercel, in minutes.
           </p>
         </div>
 
@@ -80,16 +82,6 @@ function statusInfo(integration: IntegrationSummary): {
         pulse: false,
       };
   }
-}
-
-function relativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
 }
 
 function parseSpecUrl(url: string | null): {

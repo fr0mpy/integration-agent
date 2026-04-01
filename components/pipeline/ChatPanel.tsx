@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 interface ChatPanelProps {
   integrationId: string
   sandboxUrl: string | null
+  validatedAt?: string | null
 }
 
 // ── Reasoning block ──────────────────────────────────────────────────────────
@@ -196,7 +197,7 @@ const SUGGESTIONS = [
   'Walk me through what happens when a tool is called',
 ]
 
-export function ChatPanel({ integrationId, sandboxUrl }: ChatPanelProps) {
+export function ChatPanel({ integrationId, sandboxUrl, validatedAt }: ChatPanelProps) {
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
@@ -230,8 +231,12 @@ export function ChatPanel({ integrationId, sandboxUrl }: ChatPanelProps) {
           <span className="ml-auto rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] text-emerald-400">
             live sandbox
           </span>
-        ) : (
+        ) : validatedAt ? (
           <span className="ml-auto rounded-full bg-zinc-700/40 px-2 py-0.5 text-[10px] text-zinc-500">
+            sandbox expired
+          </span>
+        ) : (
+          <span className="ml-auto rounded-full bg-zinc-800/60 px-2 py-0.5 text-[10px] text-zinc-600">
             no sandbox
           </span>
         )}

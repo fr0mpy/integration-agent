@@ -35,7 +35,25 @@ function parseTabParam(value: string | null): PipelineStage {
   return 'discover-api'
 }
 
-export function PipelineView({ integrationId, cached = false }: { integrationId: string; cached?: boolean }) {
+export function PipelineView({
+  integrationId,
+  cached = false,
+  initialSandboxUrl = null,
+  initialVerifiedTools = [],
+  initialValidatedAt = null,
+  authMethod = null,
+  initialHasCredentials = false,
+  initialLiveValidatedAt = null,
+}: {
+  integrationId: string
+  cached?: boolean
+  initialSandboxUrl?: string | null
+  initialVerifiedTools?: string[]
+  initialValidatedAt?: string | null
+  authMethod?: string | null
+  initialHasCredentials?: boolean
+  initialLiveValidatedAt?: string | null
+}) {
   const state = usePipeline(integrationId, cached)
 
   const METHOD_ORDER: Record<string, number> = { GET: 0, POST: 1, PUT: 2, PATCH: 3, DELETE: 4 }
@@ -208,11 +226,15 @@ export function PipelineView({ integrationId, cached = false }: { integrationId:
         <StagePanel status={state.stageStatus['preview-mcp']} error={state.error} stage="preview-mcp">
           <ValidatePanel
             integrationId={integrationId}
-            sandboxUrl={state.sandboxUrl}
+            sandboxUrl={state.sandboxUrl ?? initialSandboxUrl}
             sourceCode={state.sourceCode}
             buildLog={state.buildLog}
-            verifiedTools={state.verifiedTools}
+            verifiedTools={state.verifiedTools.length > 0 ? state.verifiedTools : initialVerifiedTools}
+            validatedAt={state.sandboxUrl ? null : initialValidatedAt}
             validateStatus={state.stageStatus['preview-mcp']}
+            authMethod={authMethod}
+            initialHasCredentials={initialHasCredentials}
+            initialLiveValidatedAt={initialLiveValidatedAt}
           />
         </StagePanel>
       </TabsContent>

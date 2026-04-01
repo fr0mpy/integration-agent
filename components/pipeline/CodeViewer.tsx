@@ -133,7 +133,8 @@ export function CodeViewer({ integrationId, sourceCode }: CodeViewerProps) {
             highlightActiveLine: false,
             highlightSelectionMatches: false,
           }}
-          style={{ height: '100%', fontSize: '12px' }}
+          height="100%"
+          style={{ fontSize: '12px' }}
         />
       </div>
     </div>
