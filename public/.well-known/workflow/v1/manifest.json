@@ -1,11 +1,6 @@
 {
   "version": "1.0.0",
   "steps": {
-    "node_modules/workflow/dist/stdlib.js": {
-      "fetch": {
-        "stepId": "step//workflow@4.2.0-beta.74//fetch"
-      }
-    },
     "node_modules/workflow/dist/internal/builtins.js": {
       "__builtin_response_array_buffer": {
         "stepId": "__builtin_response_array_buffer"
@@ -17,6 +12,11 @@
         "stepId": "__builtin_response_text"
       }
     },
+    "node_modules/workflow/dist/stdlib.js": {
+      "fetch": {
+        "stepId": "step//workflow@4.2.0-beta.74//fetch"
+      }
+    },
     "lib/pipeline/index.ts": {
       "cacheResults": {
         "stepId": "step//./lib/pipeline/index//cacheResults"
@@ -26,6 +26,9 @@
       },
       "failIntegration": {
         "stepId": "step//./lib/pipeline/index//failIntegration"
+      },
+      "persistValidation": {
+        "stepId": "step//./lib/pipeline/index//persistValidation"
       },
       "runCodegen": {
         "stepId": "step//./lib/pipeline/index//runCodegen"
