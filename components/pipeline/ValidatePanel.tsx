@@ -5,6 +5,7 @@ import { Loader2 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { CodeViewer } from './CodeViewer'
 import { ChatPanel } from './ChatPanel'
+import { useSandbox } from '@/hooks/use-sandbox'
 import type { RevalidateResponse } from '@/app/api/integrate/[integrationId]/revalidate/route'
 import { relativeTime } from '@/lib/ui/time'
 
@@ -28,6 +29,8 @@ interface ValidatePanelProps {
   buildRetrying: boolean
   /** The raw build error that triggered the retry */
   buildErrors: string | null
+  /** True when the Preview MCP tab is selected — triggers sandbox spin-up */
+  active?: boolean
 }
 
 function credentialLabel(authMethod: string | null): string {
@@ -38,7 +41,7 @@ function credentialLabel(authMethod: string | null): string {
 
 export function ValidatePanel({
   integrationId,
-  sandboxUrl,
+  sandboxUrl: pipelineSandboxUrl,
   sourceCode,
   buildLog,
   verifiedTools,
@@ -49,7 +52,18 @@ export function ValidatePanel({
   initialLiveValidatedAt,
   buildRetrying,
   buildErrors,
+  active = false,
 }: ValidatePanelProps) {
+  // On-demand sandbox: spins up when tab is active and pipeline sandbox is gone
+  const sandbox = useSandbox(
+    integrationId,
+    pipelineSandboxUrl,
+    active && validateStatus === 'complete',
+  )
+
+  // Use pipeline sandbox URL while pipeline is running, otherwise use on-demand sandbox
+  const sandboxUrl = pipelineSandboxUrl ?? sandbox.sandboxUrl
+
   const [credential, setCredential] = useState('')
   const [saving, setSaving] = useState(false)
   const [testing, setTesting] = useState(false)
@@ -165,7 +179,10 @@ export function ValidatePanel({
   }, [integrationId])
 
   const showCredentialSection = authMethod && authMethod !== 'none'
-  const sandboxBuilding = validateStatus !== 'complete'
+  const sandboxBuilding = validateStatus !== 'complete' || sandbox.isSpinning
+
+  // Merge pipeline build log with on-demand respawn log
+  const allBuildLog = sandbox.buildLog.length > 0 ? [...buildLog, ...sandbox.buildLog] : buildLog
 
   return (
     <div className="space-y-4">
@@ -281,17 +298,31 @@ export function ValidatePanel({
         <ChatPanel integrationId={integrationId} sandboxUrl={sandboxUrl} validatedAt={validatedAt} sandboxBuilding={sandboxBuilding} />
       </div>
 
+      {/* Sandbox error */}
+      {sandbox.error && (
+        <div className="rounded-md border border-red-500/25 bg-red-950/20 px-4 py-3">
+          <p className="text-xs font-medium text-red-400">Sandbox failed</p>
+          <p className="mt-1 text-[11px] text-zinc-400">{sandbox.error}</p>
+          <button
+            onClick={sandbox.spinUp}
+            className="mt-2 rounded bg-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-600"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* Build log */}
-      {(sandboxBuilding || buildLog.length > 0 || validateStatus === 'complete') && (
+      {(sandboxBuilding || allBuildLog.length > 0 || validateStatus === 'complete') && (
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium">Build log</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <pre className="max-h-48 overflow-y-auto rounded-b-lg bg-zinc-950 p-4 text-xs leading-relaxed">
-              {buildLog.length > 0 ? (
-                buildLog.map((line, i) => (
-                  <span key={i} className={line.startsWith('Sandbox live') ? 'text-emerald-400' : 'text-zinc-400'}>
+              {allBuildLog.length > 0 ? (
+                allBuildLog.map((line, i) => (
+                  <span key={i} className={line.startsWith('Sandbox live') || line.startsWith('Sandbox still') ? 'text-emerald-400' : 'text-zinc-400'}>
                     {line}{'\n'}
                   </span>
                 ))

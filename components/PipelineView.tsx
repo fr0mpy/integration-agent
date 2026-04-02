@@ -324,6 +324,7 @@ export function PipelineView({
             initialLiveValidatedAt={initialLiveValidatedAt}
             buildRetrying={state.buildRetrying}
             buildErrors={state.buildErrors}
+            active={activeTab === 'preview-mcp'}
           />
         </StagePanel>
       </TabsContent>

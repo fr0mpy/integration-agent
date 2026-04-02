@@ -1,0 +1,151 @@
+'use client'
+
+import { useState, useCallback, useRef, useEffect } from 'react'
+
+interface SandboxReadyEvent {
+  type: 'ready'
+  sandboxUrl: string
+  sandboxId: string
+}
+
+interface SandboxLogEvent {
+  type: 'log'
+  message: string
+}
+
+interface SandboxErrorEvent {
+  type: 'error'
+  message: string
+}
+
+type SandboxEvent = SandboxReadyEvent | SandboxLogEvent | SandboxErrorEvent
+
+export interface UseSandboxReturn {
+  /** Live sandbox URL — null while spinning or if failed */
+  sandboxUrl: string | null
+  /** True while a sandbox is being created */
+  isSpinning: boolean
+  /** Build log lines from the current spin-up */
+  buildLog: string[]
+  /** Error message if spin-up failed */
+  error: string | null
+  /** Trigger a new sandbox spin-up */
+  spinUp: () => void
+}
+
+/**
+ * Manages on-demand sandbox lifecycle for the Preview MCP tab.
+ *
+ * - When `active` becomes true, checks if the existing sandbox is alive
+ *   by POSTing to the sandbox route (which does a health check first).
+ * - Streams ndjson build logs during spin-up.
+ * - Returns the live sandbox URL once ready.
+ */
+export function useSandbox(
+  integrationId: string,
+  initialSandboxUrl: string | null,
+  active: boolean,
+): UseSandboxReturn {
+  const [sandboxUrl, setSandboxUrl] = useState<string | null>(initialSandboxUrl)
+  const [isSpinning, setIsSpinning] = useState(false)
+  const [buildLog, setBuildLog] = useState<string[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const hasTriedRef = useRef(false)
+
+  const spinUp = useCallback(async () => {
+    // Abort any in-flight request
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    setIsSpinning(true)
+    setBuildLog([])
+    setError(null)
+    setSandboxUrl(null)
+
+    try {
+      const res = await fetch(`/api/integrate/${integrationId}/sandbox`, {
+        method: 'POST',
+        signal: controller.signal,
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error ?? `Sandbox request failed (${res.status})`)
+      }
+
+      const contentType = res.headers.get('content-type') ?? ''
+
+      // Fast path: existing sandbox still alive — JSON response
+      if (contentType.includes('application/json')) {
+        const data = await res.json() as SandboxReadyEvent
+        setSandboxUrl(data.sandboxUrl)
+        setBuildLog(['Sandbox still active — reconnected'])
+        setIsSpinning(false)
+        return
+      }
+
+      // Streaming path: ndjson
+      const reader = res.body?.getReader()
+      if (!reader) throw new Error('No response body')
+
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.trim()) continue
+
+          try {
+            const event = JSON.parse(line) as SandboxEvent
+
+            if (event.type === 'log') {
+              setBuildLog((prev) => [...prev, event.message])
+            } else if (event.type === 'ready') {
+              setSandboxUrl(event.sandboxUrl)
+            } else if (event.type === 'error') {
+              setError(event.message)
+            }
+          } catch {
+            // Skip malformed lines
+          }
+        }
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return
+      setError(err instanceof Error ? err.message : 'Sandbox spin-up failed')
+    } finally {
+      if (!controller.signal.aborted) {
+        setIsSpinning(false)
+      }
+    }
+  }, [integrationId])
+
+  // Auto-spin when tab becomes active
+  useEffect(() => {
+    if (!active) {
+      hasTriedRef.current = false
+      return
+    }
+
+    // Only auto-spin once per tab activation
+    if (hasTriedRef.current) return
+    hasTriedRef.current = true
+
+    spinUp()
+
+    return () => {
+      abortRef.current?.abort()
+    }
+  }, [active, spinUp])
+
+  return { sandboxUrl, isSpinning, buildLog, error, spinUp }
+}
