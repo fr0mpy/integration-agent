@@ -301,7 +301,10 @@ export function PipelineView({
           {state.stageStatus['preview-mcp'] === 'complete' && (
             <AuditTriggerButton
               integrationId={integrationId}
-              onTriggered={() => handleTabChange('audit-mcp')}
+              onTriggered={() => {
+                state.setStageRunning('audit-mcp')
+                handleTabChange('audit-mcp')
+              }}
             />
           )}
           <ValidatePanel
@@ -363,7 +366,10 @@ export function PipelineView({
             state.stageStatus['audit-mcp'] === 'failed' && (
               <AuditTriggerButton
                 integrationId={integrationId}
-                onTriggered={() => handleTabChange('audit-mcp')}
+                onTriggered={() => {
+                  state.setStageRunning('audit-mcp')
+                  handleTabChange('audit-mcp')
+                }}
               />
             )}
           <AuditPanel

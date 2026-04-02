@@ -55,7 +55,7 @@ const INITIAL_STAGE_STATUS: PipelineState['stageStatus'] = {
 }
 
 
-export function usePipeline(integrationId: string, cached = false): PipelineState {
+export function usePipeline(integrationId: string, cached = false): PipelineState & { setStageRunning: (stage: PipelineStage) => void } {
   const [state, setState] = useState<PipelineState>({
     currentStage: null,
     stageStatus: { ...INITIAL_STAGE_STATUS },
@@ -383,5 +383,12 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
     return () => clearInterval(intervalId)
   }, [integrationId, cached, state.stageStatus])
 
-  return state
+  const setStageRunning = useCallback((stage: PipelineStage) => {
+    setState((prev) => ({
+      ...prev,
+      stageStatus: { ...prev.stageStatus, [stage]: 'running' },
+    }))
+  }, [])
+
+  return { ...state, setStageRunning }
 }
