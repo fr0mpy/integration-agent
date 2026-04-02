@@ -1,3 +1,10 @@
+import { z } from 'zod'
+import { generateText, Output } from 'ai'
+import { synthesisModel, buildTags } from '../ai/gateway'
+import { prompts, interpolate } from '../prompts'
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 export interface DiscoveredEndpoint {
   method: string
   path: string
@@ -50,19 +57,21 @@ export interface DiscoveryResult {
   warnings: string[]
 }
 
+// ── Spec parsing helpers ──────────────────────────────────────────────────────
+
 function groupEndpoints(endpoints: DiscoveredEndpoint[]): Record<string, DiscoveredEndpoint[]> {
   const groups: Record<string, DiscoveredEndpoint[]> = {}
+
   for (const ep of endpoints) {
     const segment = ep.path.split('/').filter(Boolean)[0] ?? '_root'
     if (!groups[segment]) groups[segment] = []
     groups[segment].push(ep)
   }
+
   return groups
 }
 
-import { z } from 'zod'
-import { generateText, Output } from 'ai'
-import { synthesisModel, buildTags } from '../ai/gateway'
+// ── AI Enrichment (Stage 1b) ──────────────────────────────────────────────────
 
 const MAX_ENDPOINTS = 50
 const MIN_SUMMARY_LENGTH = 10
@@ -100,21 +109,24 @@ export async function enrichDiscovery(
     summary: e.summary,
   }))
 
+  const sections = prompts.enrichment.sections!
+  const header = interpolate(sections.header, {
+    apiName: result.apiName,
+    endpointCount: String(result.endpointCount),
+  })
+  const instruction = tooMany
+    ? interpolate(sections.selectInstruction, { maxEndpoints: String(MAX_ENDPOINTS) })
+    : sections.returnAllInstruction
+
   const prompt = [
-    `API: ${result.apiName}`,
-    `Total endpoints: ${result.endpointCount}`,
+    header,
     '',
     'Endpoints:',
     JSON.stringify(endpointList, null, 2),
     '',
     'Instructions:',
-    tooMany
-      ? `Select the ${MAX_ENDPOINTS} most useful endpoints for an LLM tool-caller. Prioritise CRUD operations, common queries, and high-value actions. Exclude admin, bulk, and rarely-used endpoints.`
-      : 'Return all endpoints.',
-    'For every endpoint:',
-    '- If operationId is null, generate a clean camelCase name from the method and path (e.g. GET /users/{id} → getUserById).',
-    '- If the summary is shorter than 10 characters or empty, write a clear one-line summary describing what the endpoint does.',
-    '- Keep existing operationIds and summaries that are already good.',
+    instruction,
+    sections.enrichRules,
   ].join('\n')
 
   try {
@@ -172,6 +184,8 @@ export async function enrichDiscovery(
   }
 }
 
+// ── Discovery (Stage 1a) ──────────────────────────────────────────────────────
+
 /**
  * Stage 1a — Discovery. Pure TypeScript, no LLM call.
  * Dereferences $ref pointers, then extracts the API surface.
@@ -209,6 +223,7 @@ export async function discoverEndpoints(spec: Record<string, unknown>): Promise<
     for (const method of ['get', 'post', 'put', 'patch', 'delete'] as const) {
       const operation = pathItem[method] as Record<string, unknown> | undefined
       if (!operation) continue
+
       if (operation.deprecated === true) {
         deprecatedCount++
         continue
@@ -253,6 +268,7 @@ function extractBaseUrl(spec: Record<string, unknown>): string {
   const host = spec.host as string | undefined
   const basePath = spec.basePath as string | undefined
   const schemes = spec.schemes as string[] | undefined
+
   if (host) {
     const scheme = schemes?.[0] ?? 'https'
     return `${scheme}://${host}${basePath ?? ''}`
@@ -287,6 +303,7 @@ function extractAuth(spec: Record<string, unknown>): {
     if (type === 'oauth2') return { authMethod: 'oauth2', authHeader: 'Authorization' }
     if (type === 'http' && schemeValue === 'bearer') return { authMethod: 'bearer', authHeader: 'Authorization' }
     if (type === 'http' && schemeValue === 'basic') return { authMethod: 'basic', authHeader: 'Authorization' }
+
     if (type === 'apiKey') {
       const inValue = String(scheme.in ?? 'header')
       const name = String(scheme.name ?? 'Authorization')

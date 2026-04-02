@@ -34,6 +34,7 @@ export async function runSandboxCheck(
   const logs: string[] = []
 
   let sandbox: Sandbox
+
   try {
     sandbox = await Sandbox.create({
       ...(snapshotId
@@ -55,6 +56,7 @@ export async function runSandboxCheck(
   }
 
   let failed = false
+
   try {
     logs.push('Setting up sandbox...')
 
@@ -70,6 +72,7 @@ export async function runSandboxCheck(
 
     // npm install
     const install = await sandbox.runCommand('npm', ['install'])
+
     if (install.exitCode !== 0) {
       failed = true
       const stderr = await install.stderr()
@@ -80,6 +83,7 @@ export async function runSandboxCheck(
 
     // next build
     const build = await sandbox.runCommand('npm', ['run', 'build'])
+
     if (build.exitCode !== 0) {
       failed = true
       const stderr = await build.stderr()
@@ -103,6 +107,7 @@ export async function runSandboxCheck(
     const transport = new StreamableHTTPClientTransport(new URL(`${sandboxUrl}/mcp`))
 
     let returnedTools: Array<{ name: string }>
+
     try {
       await client.connect(transport)
       const result = await client.listTools()

@@ -33,6 +33,9 @@
       "failIntegration": {
         "stepId": "step//./lib/pipeline/index//failIntegration"
       },
+      "loadSourceOverride": {
+        "stepId": "step//./lib/pipeline/index//loadSourceOverride"
+      },
       "persistDeployment": {
         "stepId": "step//./lib/pipeline/index//persistDeployment"
       },
@@ -62,6 +65,9 @@
       },
       "runPollVercelDeployment": {
         "stepId": "step//./lib/pipeline/index//runPollVercelDeployment"
+      },
+      "runSecurityAudit": {
+        "stepId": "step//./lib/pipeline/index//runSecurityAudit"
       },
       "runSynthesis": {
         "stepId": "step//./lib/pipeline/index//runSynthesis"

@@ -9,6 +9,7 @@ import { neon } from '@neondatabase/serverless'
 
 async function main() {
   const databaseUrl = process.env.DATABASE_URL
+
   if (!databaseUrl) {
     console.error('DATABASE_URL not set')
     process.exit(1)

@@ -54,6 +54,7 @@ async function main() {
   }])
 
   const install = await sandbox.runCommand('npm', ['install'])
+
   if (install.exitCode !== 0) {
     const stderr = await install.stderr()
     console.error('npm install failed:', stderr)

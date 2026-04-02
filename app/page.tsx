@@ -1,9 +1,9 @@
-import Link from "next/link";
-import { SpecInput } from "@/components/SpecInput";
-import { listIntegrations, type IntegrationSummary } from "@/lib/storage/neon";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { relativeTime } from "@/lib/ui/time";
+import Link from 'next/link';
+import { SpecInput } from '@/components/SpecInput';
+import { listIntegrations, type IntegrationSummary } from '@/lib/storage/neon';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { relativeTime } from '@/lib/ui/time';
 
 export default async function Home() {
   const integrations = await listIntegrations(10);
@@ -50,41 +50,41 @@ function statusInfo(integration: IntegrationSummary): {
   pulse: boolean;
 } {
   switch (integration.status) {
-    case "pending":
-    case "synthesising":
+    case 'pending':
+    case 'synthesising':
       return {
-        label: "Awaiting deployment",
-        className: "border-amber-500/50 text-amber-400",
+        label: 'Awaiting deployment',
+        className: 'border-amber-500/50 text-amber-400',
         pulse: true,
       };
-    case "deploying":
+    case 'deploying':
       return {
-        label: "Deploying",
-        className: "border-blue-500/50 text-blue-400",
+        label: 'Deploying',
+        className: 'border-blue-500/50 text-blue-400',
         pulse: true,
       };
-    case "validating":
+    case 'validating':
       return {
-        label: "Validating",
-        className: "border-blue-500/50 text-blue-400",
+        label: 'Validating',
+        className: 'border-blue-500/50 text-blue-400',
         pulse: true,
       };
-    case "live":
+    case 'live':
       return {
-        label: "Deployed",
-        className: "border-emerald-500/40 text-emerald-400",
+        label: 'Deployed',
+        className: 'border-emerald-500/40 text-emerald-400',
         pulse: false,
       };
-    case "failed":
+    case 'failed':
       return {
-        label: "Failed",
-        className: "border-red-500/40 text-red-400",
+        label: 'Failed',
+        className: 'border-red-500/40 text-red-400',
         pulse: false,
       };
     default:
       return {
-        label: "In progress",
-        className: "border-zinc-500/40 text-zinc-400",
+        label: 'In progress',
+        className: 'border-zinc-500/40 text-zinc-400',
         pulse: false,
       };
   }
@@ -95,9 +95,10 @@ function parseSpecUrl(url: string | null): {
   path: string | null;
 } {
   if (!url) return { host: null, path: null };
+
   try {
     const u = new URL(url);
-    return { host: u.hostname, path: u.pathname === "/" ? null : u.pathname };
+    return { host: u.hostname, path: u.pathname === '/' ? null : u.pathname };
   } catch {
     return { host: url, path: null };
   }
@@ -114,7 +115,7 @@ function IntegrationRow({ integration }: { integration: IntegrationSummary }) {
       <CardContent className="flex items-center gap-3 px-4 py-2.5">
         <Link href={href} className="min-w-0 flex-1">
           <span className="block truncate text-sm font-medium text-zinc-200">
-            {host ?? "Unknown source"}
+            {host ?? 'Unknown source'}
           </span>
           <span className="block truncate font-mono text-xs text-muted-foreground">
             {path ? `${path} · ${shortId}` : shortId}
@@ -127,7 +128,7 @@ function IntegrationRow({ integration }: { integration: IntegrationSummary }) {
 
         <Badge
           variant="outline"
-          className={`shrink-0 text-[10px] ${className} ${pulse ? "animate-pulse" : ""}`}
+          className={`shrink-0 text-[10px] ${className} ${pulse ? 'animate-pulse' : ''}`}
         >
           {label}
         </Badge>

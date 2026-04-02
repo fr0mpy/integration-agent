@@ -1,0 +1,75 @@
+import type { DiscoveryResult } from '../../lib/pipeline/discover'
+
+export const openweatherFixture: DiscoveryResult = {
+  apiName: 'OpenWeatherMap',
+  apiDescription: 'Access current weather, forecasts, and historical weather data worldwide.',
+  baseUrl: 'https://api.openweathermap.org/data/2.5',
+  authMethod: 'apiKey',
+  authHeader: null,
+  endpointCount: 4,
+  endpoints: [
+    {
+      method: 'GET',
+      path: '/weather',
+      operationId: 'getCurrentWeather',
+      summary: 'Current weather data',
+      description: 'Returns current weather conditions for a city or geographic coordinates.',
+      parameters: [
+        { name: 'q', in: 'query', required: false, description: 'City name, optionally with state code and country code (e.g., London,uk)', type: 'string' },
+        { name: 'lat', in: 'query', required: false, description: 'Latitude of the location', type: 'number' },
+        { name: 'lon', in: 'query', required: false, description: 'Longitude of the location', type: 'number' },
+        { name: 'units', in: 'query', required: false, description: 'Units of measurement: standard, metric, or imperial', type: 'string' },
+      ],
+      requestBody: null,
+      responses: { '200': 'Current weather data' },
+    },
+    {
+      method: 'GET',
+      path: '/forecast',
+      operationId: 'getForecast',
+      summary: '5-day weather forecast',
+      description: 'Returns weather forecast data in 3-hour intervals for 5 days.',
+      parameters: [
+        { name: 'q', in: 'query', required: false, description: 'City name, optionally with state code and country code', type: 'string' },
+        { name: 'lat', in: 'query', required: false, description: 'Latitude of the location', type: 'number' },
+        { name: 'lon', in: 'query', required: false, description: 'Longitude of the location', type: 'number' },
+        { name: 'units', in: 'query', required: false, description: 'Units of measurement: standard, metric, or imperial', type: 'string' },
+        { name: 'cnt', in: 'query', required: false, description: 'Number of 3-hour intervals to return (max 40)', type: 'integer' },
+      ],
+      requestBody: null,
+      responses: { '200': 'Forecast data' },
+    },
+    {
+      method: 'GET',
+      path: '/air_pollution',
+      operationId: 'getAirPollution',
+      summary: 'Air pollution data',
+      description: 'Returns current air quality index and pollutant concentrations for a location.',
+      parameters: [
+        { name: 'lat', in: 'query', required: true, description: 'Latitude of the location', type: 'number' },
+        { name: 'lon', in: 'query', required: true, description: 'Longitude of the location', type: 'number' },
+      ],
+      requestBody: null,
+      responses: { '200': 'Air pollution data' },
+    },
+    {
+      method: 'GET',
+      path: '/onecall',
+      operationId: 'getOneCall',
+      summary: 'One Call API',
+      description: 'Returns current weather, minute-by-minute forecast for 1 hour, hourly forecast for 48 hours, and daily forecast for 8 days.',
+      parameters: [
+        { name: 'lat', in: 'query', required: true, description: 'Latitude of the location', type: 'number' },
+        { name: 'lon', in: 'query', required: true, description: 'Longitude of the location', type: 'number' },
+        { name: 'exclude', in: 'query', required: false, description: 'Comma-separated list of parts to exclude: current, minutely, hourly, daily, alerts', type: 'string' },
+        { name: 'units', in: 'query', required: false, description: 'Units of measurement: standard, metric, or imperial', type: 'string' },
+      ],
+      requestBody: null,
+      responses: { '200': 'Weather data bundle' },
+    },
+  ],
+  groups: {
+    weather: [],
+  },
+  warnings: [],
+}

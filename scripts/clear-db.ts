@@ -11,6 +11,7 @@ import { Redis } from '@upstash/redis'
 async function main() {
   // --- Neon Postgres ---
   const databaseUrl = process.env.DATABASE_URL
+
   if (!databaseUrl) {
     console.error('DATABASE_URL not set — skipping Postgres')
   } else {
@@ -24,6 +25,7 @@ async function main() {
   // --- Upstash Redis ---
   const redisUrl = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL
   const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN
+
   if (!redisUrl || !redisToken) {
     console.error('Redis env vars not set — skipping Redis flush')
   } else {

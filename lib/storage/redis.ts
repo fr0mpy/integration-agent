@@ -64,6 +64,22 @@ export const discoveryCache = {
   },
 }
 
+export const sourceOverride = {
+  get(integrationId: string) {
+    return safeRedis('sourceOverride read', () => redis.get<string>(`sourceOverride:${integrationId}`))
+  },
+
+  set(integrationId: string, source: string) {
+    return safeRedis('sourceOverride write', () =>
+      redis.set(`sourceOverride:${integrationId}`, source, { ex: CACHE_TTL_SECONDS }),
+    )
+  },
+
+  del(integrationId: string) {
+    return safeRedis('sourceOverride delete', () => redis.del(`sourceOverride:${integrationId}`))
+  },
+}
+
 export const lock = {
   /** Acquire a distributed lock. Returns true if acquired, false if already held. */
   async acquire(key: string, ttlMs = 120_000): Promise<boolean> {

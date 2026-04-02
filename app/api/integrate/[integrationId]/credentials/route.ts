@@ -32,12 +32,14 @@ export async function POST(
   if (!integrationId) return errors.badRequest('Invalid integration ID.')
 
   const integration = await getIntegration(integrationId)
+
   if (!integration) {
     return errors.notFound('Integration not found.')
   }
 
   const raw = await req.json()
   const parsed = postSchema.safeParse(raw)
+
   if (!parsed.success) {
     return errors.badRequest('Invalid request.')
   }

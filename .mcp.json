@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "petstore": {
+      "type": "http",
+      "url": "https://mcp-swagger-petstore-openapi-3-0-7c1f27-4gh8qi27y.vercel.app/mcp"
+    }
+  }
+}

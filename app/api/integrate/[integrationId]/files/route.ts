@@ -1,5 +1,5 @@
 import { getIntegration } from '@/lib/storage/neon'
-import { configCache } from '@/lib/storage/redis'
+import { configCache, sourceOverride } from '@/lib/storage/redis'
 import { bundleServer } from '@/lib/mcp/bundle'
 import { isValidUUID } from '@/lib/validation'
 import { success, errors } from '@/lib/api/response'
@@ -17,16 +17,26 @@ export async function GET(
     }
 
     const integration = await getIntegration(integrationId)
+
     if (!integration) {
       return errors.notFound('Integration not found.')
     }
 
     const config = await configCache.get(integration.spec_hash) as MCPServerConfig | null
+
     if (!config) {
       return errors.notFound('Config not cached yet.')
     }
 
     const { files } = bundleServer(config)
+
+    const override = await sourceOverride.get(integrationId)
+
+    if (override) {
+      const idx = files.findIndex(f => f.file === 'app/[transport]/route.ts')
+      if (idx >= 0) files[idx] = { ...files[idx], data: override }
+    }
+
     return success({ files })
   } catch (err) {
     console.error('Files route error:', err instanceof Error ? err.message : 'unknown')

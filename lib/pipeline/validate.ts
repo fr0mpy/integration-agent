@@ -30,10 +30,12 @@ export function validateConfig(
 
   // 1. No duplicate tool names
   const seen = new Set<string>()
+
   for (const tool of config.tools) {
     if (seen.has(tool.name)) {
       errors.push({ tool: tool.name, message: `Duplicate tool name "${tool.name}"` })
     }
+
     seen.add(tool.name)
   }
 
@@ -51,6 +53,7 @@ export function validateConfig(
 
     // 3. Required params must be defined in inputSchema.properties
     const definedProps = new Set(Object.keys(tool.inputSchema.properties))
+
     for (const req of tool.inputSchema.required) {
       if (!definedProps.has(req)) {
         errors.push({
@@ -66,6 +69,30 @@ export function validateConfig(
         tool: tool.name,
         message: `Tool "${tool.name}" requires auth but config has no authHeader`,
       })
+    }
+
+    // 5. Composed tool sub-endpoints must exist in spec
+    if (tool.composedOf) {
+      const definedProps = new Set(Object.keys(tool.inputSchema.properties))
+
+      for (const sub of tool.composedOf) {
+        if (!specPaths.has(sub.httpPath)) {
+          errors.push({
+            tool: tool.name,
+            message: `Composed sub-endpoint "${sub.httpMethod} ${sub.httpPath}" not found in spec (tool: ${tool.name})`,
+          })
+        }
+
+        // Validate paramMapping references existing input params
+        for (const toolParam of Object.keys(sub.paramMapping)) {
+          if (!definedProps.has(toolParam)) {
+            errors.push({
+              tool: tool.name,
+              message: `Composed paramMapping references unknown input param "${toolParam}" (tool: ${tool.name})`,
+            })
+          }
+        }
+      }
     }
   }
 

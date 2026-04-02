@@ -149,6 +149,7 @@ export async function listIntegrations(limit = 20): Promise<IntegrationSummary[]
 
 export async function saveCredentials(integrationId: string, encryptedValue: string): Promise<boolean> {
   if (!process.env.DATABASE_URL) return false
+
   try {
     const sql = getDb()
     await sql`
@@ -165,6 +166,7 @@ export async function saveCredentials(integrationId: string, encryptedValue: str
 
 export async function getCredentials(integrationId: string): Promise<string | null> {
   if (!process.env.DATABASE_URL) return null
+
   try {
     const sql = getDb()
     const rows = await sql`SELECT encrypted_value FROM credentials WHERE integration_id = ${integrationId}`
@@ -177,6 +179,7 @@ export async function getCredentials(integrationId: string): Promise<string | nu
 
 export async function hasCredentials(integrationId: string): Promise<boolean> {
   if (!process.env.DATABASE_URL) return false
+
   try {
     const sql = getDb()
     const rows = await sql`SELECT 1 FROM credentials WHERE integration_id = ${integrationId} LIMIT 1`

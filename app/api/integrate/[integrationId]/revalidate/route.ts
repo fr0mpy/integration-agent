@@ -30,16 +30,19 @@ export async function POST(
   { params }: { params: Promise<{ integrationId: string }> },
 ) {
   const { integrationId } = await params
+
   if (!isValidUUID(integrationId)) {
     return errors.badRequest('Invalid integration ID.')
   }
 
   const integration = await getIntegration(integrationId)
+
   if (!integration) {
     return errors.notFound('Integration not found.')
   }
 
   const sandboxUrl = integration.sandbox_url as string | null
+
   if (!sandboxUrl) {
     return errors.badRequest('No sandbox URL — run the pipeline first.')
   }
@@ -52,11 +55,13 @@ export async function POST(
   }
 
   const encryptedValue = await getCredentials(integrationId)
+
   if (!encryptedValue) {
     return errors.badRequest('No credentials saved — enter an API credential first.')
   }
 
   let apiKey: string
+
   try {
     const parsed = JSON.parse(decrypt(encryptedValue)) as { apiKey: string }
     apiKey = parsed.apiKey
@@ -65,6 +70,7 @@ export async function POST(
   }
 
   const config = await configCache.get(integration.spec_hash) as MCPServerConfig | null
+
   if (!config) {
     return errors.notFound('Config not cached — pipeline may need to re-run.')
   }
@@ -115,9 +121,11 @@ export async function POST(
     for (const tool of candidates) {
       // Build minimal args — only required params, with placeholder values
       const args: Record<string, unknown> = {}
+
       for (const name of tool.inputSchema.required) {
         const prop = tool.inputSchema.properties[name]
         if (!prop) continue
+
         switch (prop.type) {
           case 'number': args[name] = 0; break
           case 'boolean': args[name] = false; break
@@ -132,6 +140,7 @@ export async function POST(
 
         // Sniff HTTP status from the API response JSON if present
         let status: number | undefined
+
         try {
           const parsed = JSON.parse(text) as Record<string, unknown>
           if (typeof parsed.status === 'number') status = parsed.status

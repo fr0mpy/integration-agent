@@ -84,9 +84,11 @@ export async function GET(
 
     if (lastIndexParam !== null) {
       const parsed = parseInt(lastIndexParam, 10)
+
       if (!Number.isInteger(parsed) || parsed < 0) {
         return sseError('Invalid lastIndex parameter.')
       }
+
       startIndex = parsed + 1
     }
 

@@ -17,18 +17,18 @@ export function generateServerSource(config: MCPServerConfig): string {
 
 function generateToolRegistration(tool: MCPToolDefinition): string {
   const schema = generateZodSchema(tool)
-  const handler = generateHandler(tool)
+  const handler = tool.composedOf ? generateComposedHandler(tool) : generateHandler(tool)
   return [
-    `  server.tool(`,
+    '  server.tool(',
     `    ${JSON.stringify(tool.name)},`,
     `    ${JSON.stringify(tool.description)},`,
-    `    {`,
+    '    {',
     schema,
-    `    },`,
-    `    async (params, { authInfo }) => {`,
+    '    },',
+    '    async (params, { authInfo }) => {',
     handler,
-    `    },`,
-    `  )`,
+    '    },',
+    '  )',
   ].join('\n')
 }
 
@@ -66,6 +66,7 @@ function generateHandler(tool: MCPToolDefinition): string {
 
   // Validate path param names are safe JS identifiers to prevent code injection
   const SAFE_IDENT = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/
+
   for (const p of pathParams) {
     if (!SAFE_IDENT.test(p)) {
       throw new Error(`Unsafe path parameter name: ${p}`)
@@ -85,14 +86,15 @@ function generateHandler(tool: MCPToolDefinition): string {
 
   // Credential lookup
   if (authRequired) {
-    lines.push(`      const creds = await fetchCredentials(authInfo?.token)`)
+    lines.push('      const creds = await fetchCredentials(authInfo?.token)')
   }
 
   // Build URL with path param substitution — encodeURIComponent prevents path traversal
   let urlExpr = `\`\${BASE_URL}${httpPath.replace(/\{([^}]+)\}/g, '${encodeURIComponent(String(params.$1))}')}\``
 
   if (queryParams.length > 0) {
-    lines.push(`      const _params = new URLSearchParams()`)
+    lines.push('      const _params = new URLSearchParams()')
+
     for (const p of queryParams) {
       if (required.has(p)) {
         lines.push(`      _params.set(${JSON.stringify(p)}, String(params.${p}))`)
@@ -100,6 +102,7 @@ function generateHandler(tool: MCPToolDefinition): string {
         lines.push(`      if (params.${p} !== undefined) _params.set(${JSON.stringify(p)}, String(params.${p}))`)
       }
     }
+
     urlExpr = `\`\${BASE_URL}${httpPath.replace(/\{([^}]+)\}/g, '${encodeURIComponent(String(params.$1))}')}?\${_params.toString()}\``
   }
 
@@ -109,7 +112,7 @@ function generateHandler(tool: MCPToolDefinition): string {
   const fetchOpts: string[] = [`method: ${JSON.stringify(httpMethod)}`]
 
   if (authRequired) {
-    const authHeaderExpr = `'Authorization': \`Bearer \${creds.apiKey}\``
+    const authHeaderExpr = '\'Authorization\': `Bearer ${creds.apiKey}`'
     fetchOpts.push(`headers: { ${authHeaderExpr} }`)
   }
 
@@ -118,18 +121,111 @@ function generateHandler(tool: MCPToolDefinition): string {
       .map((p) => (required.has(p) ? `${p}: params.${p}` : `...(params.${p} !== undefined && { ${p}: params.${p} })`))
       .join(', ')
     lines.push(`      const body = JSON.stringify({ ${bodyObj} })`)
+
     if (authRequired) {
       const idx = fetchOpts.findIndex((l) => l.startsWith('headers:'))
-      fetchOpts[idx] = `headers: { 'Authorization': \`Bearer \${creds.apiKey}\`, 'Content-Type': 'application/json' }`
+      fetchOpts[idx] = 'headers: { \'Authorization\': `Bearer ${creds.apiKey}`, \'Content-Type\': \'application/json\' }'
     } else {
-      fetchOpts.push(`headers: { 'Content-Type': 'application/json' }`)
+      fetchOpts.push('headers: { \'Content-Type\': \'application/json\' }')
     }
-    fetchOpts.push(`body`)
+
+    fetchOpts.push('body')
   }
 
   lines.push(`      const res = await fetch(url, { ${fetchOpts.join(', ')} })`)
-  lines.push(`      const data = await res.json()`)
-  lines.push(`      return { content: [{ type: 'text', text: JSON.stringify(data) }] }`)
+  lines.push('      const data = await res.json()')
+  lines.push('      return { content: [{ type: \'text\', text: JSON.stringify(data) }] }')
+
+  return lines.join('\n')
+}
+
+/**
+ * Generates a handler for a composed tool that calls multiple endpoints in parallel
+ * via Promise.all and merges the results into a single keyed object.
+ */
+function generateComposedHandler(tool: MCPToolDefinition): string {
+  const { authRequired, composedOf } = tool
+
+  if (!composedOf || composedOf.length < 2) {
+    throw new Error(`Composed tool ${tool.name} must have at least 2 sub-endpoints`)
+  }
+
+  const SAFE_IDENT = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/
+
+  const lines: string[] = []
+
+  if (authRequired) {
+    lines.push('      const creds = await fetchCredentials(authInfo?.token)')
+  }
+
+  // Build fetch expressions for each sub-endpoint
+  const fetchExprs: string[] = []
+  const resultKeys: string[] = []
+
+  for (const sub of composedOf) {
+    // Validate path param names
+    const pathParams = (sub.httpPath.match(/\{([^}]+)\}/g) ?? []).map((s) => s.slice(1, -1))
+
+    for (const p of pathParams) {
+      if (!SAFE_IDENT.test(p)) {
+        throw new Error(`Unsafe path parameter name in composed sub-endpoint: ${p}`)
+      }
+    }
+
+    // Build URL with param mapping: composedOf.paramMapping maps tool param → path param
+    const reverseMapping: Record<string, string> = {}
+
+    for (const [toolParam, subParam] of Object.entries(sub.paramMapping)) {
+      reverseMapping[subParam] = toolParam
+    }
+
+    const urlPath = sub.httpPath.replace(/\{([^}]+)\}/g, (_match, paramName: string) => {
+      const toolParam = reverseMapping[paramName] ?? paramName
+      return `\${encodeURIComponent(String(params.${toolParam}))}`
+    })
+
+    const urlExpr = `\`\${BASE_URL}${urlPath}\``
+
+    const fetchOpts: string[] = [`method: ${JSON.stringify(sub.httpMethod)}`]
+
+    if (authRequired) {
+      fetchOpts.push('headers: { \'Authorization\': `Bearer ${creds.apiKey}` }')
+    }
+
+    fetchExprs.push(`fetch(${urlExpr}, { ${fetchOpts.join(', ')} }).then(r => r.json())`)
+
+    // Derive a result key from the last meaningful path segment
+    const segments = sub.httpPath.split('/').filter(Boolean)
+    const lastSegment = segments[segments.length - 1] ?? 'result'
+    const key = lastSegment.startsWith('{') ? segments[segments.length - 2] ?? 'result' : lastSegment
+    resultKeys.push(key)
+  }
+
+  // Deduplicate keys by appending index if needed
+  const seen = new Map<string, number>()
+  const dedupedKeys = resultKeys.map((key) => {
+    const count = seen.get(key) ?? 0
+    seen.set(key, count + 1)
+    return count > 0 ? `${key}_${count}` : key
+  })
+
+  // Fix first occurrence if it has duplicates
+  for (const [key, count] of seen) {
+    if (count > 1) {
+      const idx = dedupedKeys.indexOf(key)
+      if (idx !== -1) dedupedKeys[idx] = `${key}_0`
+    }
+  }
+
+  lines.push(`      const [${dedupedKeys.join(', ')}] = await Promise.all([`)
+
+  for (const expr of fetchExprs) {
+    lines.push(`        ${expr},`)
+  }
+
+  lines.push('      ])')
+  lines.push(`      const merged = { ${dedupedKeys.map((k) => `${JSON.stringify(k)}: ${k}`).join(', ')} }`)
+  lines.push('      return { content: [{ type: \'text\', text: JSON.stringify(merged) }] }')
 
   return lines.join('\n')
 }

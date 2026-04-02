@@ -25,6 +25,7 @@ export async function POST(req: Request) {
 
     // Fail-closed: if Redis is unavailable, deny rather than proceed unthrottled
     let rateLimitAllowed: boolean
+
     try {
       const { success: allowed } = await ratelimit.limit(ip)
       rateLimitAllowed = allowed
@@ -32,6 +33,7 @@ export async function POST(req: Request) {
       console.warn('Rate limit check failed:', err instanceof Error ? err.message : 'unknown')
       rateLimitAllowed = false
     }
+
     if (!rateLimitAllowed) return errors.tooManyRequests()
 
     const body = await req.json()
@@ -60,6 +62,7 @@ export async function POST(req: Request) {
 
     // Prevent concurrent synthesis of the same spec
     const acquired = await lock.acquire(`synthesis:${specHash}`)
+
     if (!acquired) {
       return errors.conflict('A synthesis pipeline for this spec is already running.')
     }
@@ -68,6 +71,7 @@ export async function POST(req: Request) {
       // Check configCache inside the lock window — catches duplicate specs submitted
       // via different URLs (urlCache misses but content hash matches)
       const cachedInLock = await configCache.get(specHash)
+
       if (cachedInLock) {
         const integrationId = randomUUID()
         const cachedOk = await createIntegration(integrationId, specHash, specUrl)
