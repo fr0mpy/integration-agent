@@ -2,7 +2,7 @@ import { convertToModelMessages, streamText, stepCountIs } from 'ai'
 import type { UIMessage } from 'ai'
 import { z } from 'zod'
 import { getIntegration } from '@/lib/storage/neon'
-import { configCache, sourceOverride } from '@/lib/storage/redis'
+import { mcpConfigCache, sourceOverride } from '@/lib/storage/redis'
 import { bundleServer } from '@/lib/mcp/bundle'
 import { validateSandboxUrl, ValidationError } from '@/lib/validation'
 import { errors } from '@/lib/api/response'
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
       return errors.notFound('Integration not found.')
     }
 
-    const config = await configCache.get(integration.spec_hash) as MCPServerConfig | null
+    const config = await mcpConfigCache.get(integration.spec_hash) as MCPServerConfig | null
 
     if (!config) {
       return errors.notFound('Config not cached.')
@@ -162,7 +162,7 @@ export async function POST(req: Request) {
             } catch (err) {
               return { ok: false, error: err instanceof Error ? err.message : String(err) }
             } finally {
-              await client.close().catch(() => {}) // safe to swallow — cleanup only, not a business operation
+              await client.close().catch((e: unknown) => console.warn('MCP client close failed:', e instanceof Error ? e.message : 'unknown'))
             }
           },
         },
@@ -171,7 +171,7 @@ export async function POST(req: Request) {
 
     return result.toUIMessageStreamResponse({
       onError: (err) => {
-        console.error('Chat stream error:', err)
+        console.error('Chat stream error:', err instanceof Error ? err.message : 'unknown')
         return 'An error occurred. Please try again.'
       },
     })

@@ -2,6 +2,7 @@ import type { MCPServerConfig } from '../../mcp/types'
 import type { DiscoveryResult } from '../../pipeline/discover'
 import type { AuditFinding } from '../../pipeline/events'
 
+// Assembles the full audit prompt: tool definitions, original spec endpoints, deterministic check results, and generated source code.
 export function buildAuditPrompt(
   config: MCPServerConfig,
   discovered: DiscoveryResult,

@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from 'crypto'
 import { z } from 'zod'
 import { Ratelimit } from '@upstash/ratelimit'
-import { redis, urlCache, configCache, lock } from '@/lib/storage/redis'
+import { redis, specUrlIndex, mcpConfigCache, lock } from '@/lib/storage/redis'
 import { createIntegration, updateIntegration } from '@/lib/storage/neon'
 import { validateAndFetchSpec, ValidationError } from '@/lib/validation'
 import { success, errors } from '@/lib/api/response'
+import { revalidateTag } from 'next/cache'
 import { start } from 'workflow/api'
 import { synthesisePipeline } from '@/lib/pipeline'
 
@@ -39,26 +40,27 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { specUrl } = bodySchema.parse(body)
 
-    // Fast path: check cache before doing any DNS/network work
-    const knownHash = await urlCache.getHash(specUrl)
-
-    if (knownHash) {
-      const cached = await configCache.get(knownHash)
-
-      if (cached) {
-        const integrationId = randomUUID()
-        const cachedOk = await createIntegration(integrationId, knownHash, specUrl)
-        if (!cachedOk) return errors.internal()
-        return success({ integrationId, cached: true })
-      }
-    }
-
-    // Slow path: validate URL, resolve DNS, and fetch atomically
+    // Always fetch — required to detect whether spec content has changed since last synthesis.
     const spec = await validateAndFetchSpec(specUrl)
 
     const specHash = createHash('sha256')
       .update(JSON.stringify(spec))
       .digest('hex')
+
+    // Fast path: content unchanged → skip synthesis and use cached config
+    const knownHash = await specUrlIndex.getHash(specUrl)
+
+    if (knownHash && specHash === knownHash) {
+      const cached = await mcpConfigCache.get(specHash)
+
+      if (cached) {
+        const integrationId = randomUUID()
+        const cachedOk = await createIntegration(integrationId, specHash, specUrl)
+        if (!cachedOk) return errors.internal()
+        revalidateTag('integrations', 'minutes')
+        return success({ integrationId, cached: true })
+      }
+    }
 
     // Prevent concurrent synthesis of the same spec
     const acquired = await lock.acquire(`synthesis:${specHash}`)
@@ -68,20 +70,22 @@ export async function POST(req: Request) {
     }
 
     try {
-      // Check configCache inside the lock window — catches duplicate specs submitted
-      // via different URLs (urlCache misses but content hash matches)
-      const cachedInLock = await configCache.get(specHash)
+      // Check mcpConfigCache inside the lock window — catches duplicate specs submitted
+      // via different URLs (specUrlIndex misses but content hash matches)
+      const cachedInLock = await mcpConfigCache.get(specHash)
 
       if (cachedInLock) {
         const integrationId = randomUUID()
         const cachedOk = await createIntegration(integrationId, specHash, specUrl)
         if (!cachedOk) return errors.internal()
+        revalidateTag('integrations', 'minutes')
         return success({ integrationId, cached: true })
       }
 
       const integrationId = randomUUID()
       const created = await createIntegration(integrationId, specHash, specUrl)
       if (!created) return errors.internal()
+      revalidateTag('integrations', 'minutes')
 
       // Start the durable workflow pipeline
       // URL cache is written inside the pipeline only after successful synthesis

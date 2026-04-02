@@ -4,6 +4,7 @@ import { neon, neonConfig } from '@neondatabase/serverless'
 // lib/pipeline/index.ts overrides this with WDK's fetch for use inside workflow steps.
 neonConfig.fetchFunction = globalThis.fetch
 
+// Returns a tagged-template SQL client for the Neon database; called per-query since the neon driver is stateless.
 function getDb() {
   return neon(process.env.DATABASE_URL!)
 }
@@ -17,6 +18,7 @@ export const INTEGRATION_STATUS = {
   FAILED: 'failed',
 } as const
 
+// Inserts a new integration row with pending status; called at the start of each pipeline run to create the DB record.
 export async function createIntegration(id: string, specHash: string, specUrl: string): Promise<boolean> {
   if (!process.env.DATABASE_URL) {
     console.warn('DATABASE_URL not set — skipping integration insert')
@@ -36,6 +38,7 @@ export async function createIntegration(id: string, specHash: string, specUrl: s
   }
 }
 
+// Fetches a single integration row by ID; used by status endpoints and the UI to read current pipeline state.
 export async function getIntegration(id: string) {
   if (!process.env.DATABASE_URL) {
     console.warn('DATABASE_URL not set — skipping integration query')
@@ -54,6 +57,7 @@ export async function getIntegration(id: string) {
   }
 }
 
+// Updates one or more integration fields concurrently; each pipeline stage calls this to record progress, URLs, and IDs.
 export async function updateIntegration(
   id: string,
   updates: {
@@ -126,6 +130,7 @@ export interface IntegrationSummary {
   created_at: string
 }
 
+// Returns the most recent integrations ordered by creation time; powers the integration list on the dashboard.
 export async function listIntegrations(limit = 20): Promise<IntegrationSummary[]> {
   if (!process.env.DATABASE_URL) {
     console.warn('DATABASE_URL not set — skipping integration list')
@@ -147,6 +152,7 @@ export async function listIntegrations(limit = 20): Promise<IntegrationSummary[]
   }
 }
 
+// Upserts the encrypted credential blob for an integration; called after the user submits their API key.
 export async function saveCredentials(integrationId: string, encryptedValue: string): Promise<boolean> {
   if (!process.env.DATABASE_URL) return false
 
@@ -164,6 +170,7 @@ export async function saveCredentials(integrationId: string, encryptedValue: str
   }
 }
 
+// Retrieves the encrypted credential blob for an integration; called by the live-validation step before decrypting.
 export async function getCredentials(integrationId: string): Promise<string | null> {
   if (!process.env.DATABASE_URL) return null
 
@@ -177,6 +184,7 @@ export async function getCredentials(integrationId: string): Promise<string | nu
   }
 }
 
+// Checks whether credentials exist for an integration without reading the value; used to gate the credential-input step.
 export async function hasCredentials(integrationId: string): Promise<boolean> {
   if (!process.env.DATABASE_URL) return false
 

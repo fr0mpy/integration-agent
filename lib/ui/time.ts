@@ -1,3 +1,4 @@
+// Converts an ISO date string to a human-readable relative label (e.g. "5m ago", "2h ago").
 export function relativeTime(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime()
   const min = Math.floor(diff / 60_000)

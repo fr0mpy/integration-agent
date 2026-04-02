@@ -71,6 +71,7 @@ export interface PipelineEvent {
   timestamp: number
 }
 
+// Stamps a PipelineEvent with stage, status, and optional payload; every SSE message sent to the client is built with this.
 export function createEvent(
   stage: PipelineStage,
   status: PipelineStatus,

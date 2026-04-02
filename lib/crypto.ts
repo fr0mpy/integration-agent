@@ -4,6 +4,7 @@ const ALGORITHM = 'aes-256-gcm'
 const IV_LENGTH = 12
 const AUTH_TAG_LENGTH = 16
 
+// Reads and validates the 32-byte AES key from ENCRYPTION_KEY; throws immediately if missing or malformed so misconfiguration is caught at startup.
 function getKey(): Buffer {
   const hex = process.env.ENCRYPTION_KEY
 
@@ -14,6 +15,7 @@ function getKey(): Buffer {
   return Buffer.from(hex, 'hex')
 }
 
+// AES-256-GCM encrypts a plaintext string and returns a base64-encoded iv+authTag+ciphertext payload; used to store API credentials at rest.
 export function encrypt(plaintext: string): string {
   const key = getKey()
   const iv = randomBytes(IV_LENGTH)
@@ -29,6 +31,7 @@ export function encrypt(plaintext: string): string {
   return Buffer.concat([iv, authTag, encrypted]).toString('base64')
 }
 
+// Reverses encrypt: decodes the base64 envelope, authenticates the GCM tag, and returns the original plaintext; used to retrieve stored API credentials.
 export function decrypt(encoded: string): string {
   const key = getKey()
   const data = Buffer.from(encoded, 'base64')

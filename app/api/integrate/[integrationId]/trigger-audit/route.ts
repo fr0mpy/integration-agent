@@ -17,7 +17,7 @@ export async function POST(
     await resumeHook(`audit-trigger:${integrationId}`, { triggered: true })
     return success({ ok: true })
   } catch (err) {
-    console.error('Failed to resume audit hook:', err)
+    console.error('Failed to resume audit hook:', err instanceof Error ? err.message : 'unknown')
     return errors.serviceUnavailable(
       'Failed to trigger audit. The pipeline may have already completed or expired.',
     )

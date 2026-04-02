@@ -1,6 +1,6 @@
 import { getRun } from 'workflow/api'
 import { getIntegration } from '@/lib/storage/neon'
-import { configCache, discoveryCache } from '@/lib/storage/redis'
+import { mcpConfigCache, discoveryCache } from '@/lib/storage/redis'
 import { success, errors } from '@/lib/api/response'
 import type { PipelineEvent } from '@/lib/pipeline/events'
 
@@ -51,7 +51,7 @@ export async function GET(
     if (url.searchParams.get('cached') === 'true') {
       const specHash = integration.spec_hash as string
       const [config, discovery] = await Promise.all([
-        configCache.get(specHash),
+        mcpConfigCache.get(specHash),
         discoveryCache.get(specHash),
       ])
 

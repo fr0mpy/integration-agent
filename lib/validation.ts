@@ -2,6 +2,7 @@ import { lookup } from 'dns/promises'
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+// Returns true if the string matches UUID v4 format; guards route params before they reach any DB query.
 export function isValidUUID(id: string): boolean {
   return UUID_RE.test(id)
 }
@@ -35,6 +36,7 @@ export const BLOCKED_IP_RANGES = [
   /^0\./, // 0.0.0.0/8
 ]
 
+// Returns true for any IPv4/IPv6 address in a private or reserved range; called by SSRF guards before outbound requests.
 function isPrivateIP(ip: string): boolean {
   if (ip === '::1' || ip === '::') return true
   return BLOCKED_IP_RANGES.some((range) => range.test(ip))
@@ -100,6 +102,7 @@ export async function validateAndFetchSpec(url: string): Promise<Record<string, 
   return spec
 }
 
+// Custom error subclass that signals a user-visible 400-level problem; callers catch this to return structured error responses.
 export class ValidationError extends Error {
   constructor(message: string) {
     super(message)

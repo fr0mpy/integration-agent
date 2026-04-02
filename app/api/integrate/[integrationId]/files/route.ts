@@ -1,5 +1,5 @@
 import { getIntegration } from '@/lib/storage/neon'
-import { configCache, sourceOverride } from '@/lib/storage/redis'
+import { mcpConfigCache, sourceOverride } from '@/lib/storage/redis'
 import { bundleServer } from '@/lib/mcp/bundle'
 import { isValidUUID } from '@/lib/validation'
 import { success, errors } from '@/lib/api/response'
@@ -22,7 +22,7 @@ export async function GET(
       return errors.notFound('Integration not found.')
     }
 
-    const config = await configCache.get(integration.spec_hash) as MCPServerConfig | null
+    const config = await mcpConfigCache.get(integration.spec_hash) as MCPServerConfig | null
 
     if (!config) {
       return errors.notFound('Config not cached yet.')

@@ -122,6 +122,7 @@ async function injectProjectEnvVar(
   }
 }
 
+// Normalises an API name to a URL-safe lowercase slug for use as the Vercel project name.
 function sanitize(name: string): string {
   return name
     .toLowerCase()

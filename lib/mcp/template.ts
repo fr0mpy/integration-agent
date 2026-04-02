@@ -15,6 +15,7 @@ export function generateServerSource(config: MCPServerConfig): string {
   return tmpl.replace('// TOOLS_PLACEHOLDER', tools)
 }
 
+// Renders a single server.tool(...) call for one MCP tool, combining its name, description, Zod schema, and HTTP handler body.
 function generateToolRegistration(tool: MCPToolDefinition): string {
   const schema = generateZodSchema(tool)
   const handler = tool.composedOf ? generateComposedHandler(tool) : generateHandler(tool)
@@ -32,6 +33,7 @@ function generateToolRegistration(tool: MCPToolDefinition): string {
   ].join('\n')
 }
 
+// Converts a tool's inputSchema into Zod property declarations, marking optional fields and attaching descriptions.
 function generateZodSchema(tool: MCPToolDefinition): string {
   const required = new Set(tool.inputSchema.required)
   const lines: string[] = []
@@ -46,6 +48,7 @@ function generateZodSchema(tool: MCPToolDefinition): string {
   return lines.join('\n')
 }
 
+// Maps a JSON Schema type string to the corresponding Zod primitive expression; defaults to z.string() for unknown types.
 function zodType(type: string): string {
   switch (type) {
     case 'number': return 'z.number()'
@@ -56,6 +59,7 @@ function zodType(type: string): string {
   }
 }
 
+// Emits the async handler body for a single-endpoint tool: builds URL, optional query string or body, fetch call, and JSON response.
 function generateHandler(tool: MCPToolDefinition): string {
   const { httpMethod, httpPath, authRequired } = tool
   const paramNames = Object.keys(tool.inputSchema.properties)

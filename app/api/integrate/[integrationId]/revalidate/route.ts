@@ -1,5 +1,5 @@
 import { getIntegration, getCredentials, updateIntegration } from '@/lib/storage/neon'
-import { configCache } from '@/lib/storage/redis'
+import { mcpConfigCache } from '@/lib/storage/redis'
 import { decrypt } from '@/lib/crypto'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -54,6 +54,13 @@ export async function POST(
     return errors.badRequest(err instanceof ValidationError ? err.message : 'Invalid sandbox URL.')
   }
 
+  // Check Redis cache before hitting Neon — fast-fail if pipeline hasn't completed
+  const config = await mcpConfigCache.get(integration.spec_hash) as MCPServerConfig | null
+
+  if (!config) {
+    return errors.notFound('Config not cached — pipeline may need to re-run.')
+  }
+
   const encryptedValue = await getCredentials(integrationId)
 
   if (!encryptedValue) {
@@ -67,12 +74,6 @@ export async function POST(
     apiKey = parsed.apiKey
   } catch {
     return errors.internal()
-  }
-
-  const config = await configCache.get(integration.spec_hash) as MCPServerConfig | null
-
-  if (!config) {
-    return errors.notFound('Config not cached — pipeline may need to re-run.')
   }
 
   // Pick up to 3 representative tools — prefer GET tools with all-optional params
@@ -110,9 +111,8 @@ export async function POST(
   try {
     await client.connect(transport)
   } catch (err) {
-    return errors.serviceUnavailable(
-      `Sandbox unreachable — VM may have expired. Error: ${err instanceof Error ? err.message : String(err)}`
-    )
+    console.error('Sandbox connect failed:', err instanceof Error ? err.message : 'unknown')
+    return errors.serviceUnavailable('Sandbox unreachable — VM may have expired.')
   }
 
   const results: RevalidateResult[] = []
@@ -160,7 +160,7 @@ export async function POST(
       }
     }
   } finally {
-    await client.close().catch(() => {}) // safe to swallow — cleanup only, not a business operation
+    await client.close().catch((err: unknown) => console.warn('MCP client close failed:', err instanceof Error ? err.message : 'unknown'))
   }
 
   const anyOk = results.some((r) => r.ok)

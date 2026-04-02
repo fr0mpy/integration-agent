@@ -13,6 +13,7 @@ export const prompts = {
 
 export { type PromptDefinition } from './types'
 
+// Replaces {{key}} placeholders in a prompt template string with values from the vars map.
 export function interpolate(
   template: string,
   vars: Record<string, string>,

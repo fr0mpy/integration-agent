@@ -19,6 +19,7 @@ const AI_CHECK_IDS = ['parameter_injection', 'sensitive_data_exposure', 'destruc
 
 // ── Deterministic checks ────────────────────────────────────────────────────
 
+// Resolves the base URL via DNS and rejects private/loopback IPs to prevent the server acting as an SSRF proxy.
 async function checkSsrfBaseUrl(
   config: MCPServerConfig,
   _discovered: DiscoveryResult,
@@ -59,6 +60,7 @@ async function checkSsrfBaseUrl(
   }
 }
 
+// Compares the generated config's base URL hostname against the spec's; catches AI hallucinations that point elsewhere.
 function checkBaseUrlMismatch(
   config: MCPServerConfig,
   discovered: DiscoveryResult,
@@ -92,6 +94,7 @@ function checkBaseUrlMismatch(
   }
 }
 
+// Scans every tool's httpPath for .. and percent-encoded traversal sequences that could escape the API root.
 function checkPathTraversal(config: MCPServerConfig): AuditFinding {
   const checkId = 'path_traversal'
   const affected: string[] = []
@@ -111,6 +114,7 @@ function checkPathTraversal(config: MCPServerConfig): AuditFinding {
     'All tool httpPath values are clean.', [])
 }
 
+// Verifies each generated tool maps to a real endpoint in the spec with the correct HTTP method; flags invented paths.
 function checkHallucinatedEndpoints(
   config: MCPServerConfig,
   discovered: DiscoveryResult,
@@ -172,6 +176,7 @@ function checkHallucinatedEndpoints(
     'Every generated tool maps to a real endpoint in the OpenAPI spec with the correct HTTP method.', [])
 }
 
+// Detects CRLF characters in the auth header name that would allow HTTP request splitting.
 function checkAuthHeaderInjection(config: MCPServerConfig): AuditFinding {
   const checkId = 'auth_header_injection'
 
@@ -188,6 +193,7 @@ function checkAuthHeaderInjection(config: MCPServerConfig): AuditFinding {
     `Auth header "${config.authHeader}" contains no injection characters.`, [])
 }
 
+// Flags POST/PUT/PATCH tools and hard-blocks DELETE tools that have authRequired set to false.
 function checkMissingAuthOnWrites(config: MCPServerConfig): AuditFinding {
   const checkId = 'missing_auth_on_writes'
   const writeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
@@ -217,6 +223,7 @@ function checkMissingAuthOnWrites(config: MCPServerConfig): AuditFinding {
     'Every POST/PUT/PATCH/DELETE tool has authRequired set to true.', [])
 }
 
+// Flags when generated tool count exceeds spec endpoint count, indicating the AI invented extra tools.
 function checkExcessiveScope(
   config: MCPServerConfig,
   discovered: DiscoveryResult,
@@ -243,6 +250,7 @@ function checkExcessiveScope(
 
 // ── AI-assisted checks ──────────────────────────────────────────────────────
 
+// Calls Sonnet with tool-use to report findings for parameter injection, sensitive data exposure, and destructive operations.
 async function runAIAudit(
   config: MCPServerConfig,
   discovered: DiscoveryResult,
@@ -324,6 +332,7 @@ async function runAIAudit(
 
 // ── Main entry ──────────────────────────────────────────────────────────────
 
+// Orchestrates all deterministic checks then the AI audit; aggregates results into a pass/warn/fail summary.
 export async function performSecurityAudit(
   config: MCPServerConfig,
   discovered: DiscoveryResult,
@@ -371,6 +380,7 @@ export async function performSecurityAudit(
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+// Constructs an AuditFinding record; used by every check function as a concise return helper.
 function finding(
   checkId: string,
   severity: AuditSeverity,

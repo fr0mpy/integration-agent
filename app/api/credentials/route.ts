@@ -42,10 +42,13 @@ export async function GET(req: Request) {
   // HMAC-SHA256(CREDENTIAL_HMAC_SECRET, integrationId) → hex
   // Constant-time comparison prevents timing side-channel attacks.
   const expected = createHmac('sha256', hmacSecret).update(integrationId).digest('hex')
-  const sigBuf = Buffer.from(signature, 'hex')
   const expBuf = Buffer.from(expected, 'hex')
+  // Decode submitted signature; substitute a zero buffer if length differs so
+  // timingSafeEqual always runs on same-length inputs (prevents timing oracle).
+  const rawBuf = Buffer.from(signature, 'hex')
+  const sigBuf = rawBuf.length === expBuf.length ? rawBuf : Buffer.alloc(expBuf.length)
 
-  if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
+  if (!timingSafeEqual(sigBuf, expBuf)) {
     return errors.forbidden()
   }
 

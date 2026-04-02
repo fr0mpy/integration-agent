@@ -1,5 +1,6 @@
 import type { DiscoveryResult, DiscoveredEndpoint } from '../../pipeline/discover'
 
+// Serialises a DiscoveryResult into the structured text prompt sent to the synthesis LLM to generate MCP tool definitions.
 export function buildSynthesisPrompt(discovered: DiscoveryResult): string {
   const lines: string[] = [
     `API: ${discovered.apiName}`,
@@ -21,6 +22,7 @@ export function buildSynthesisPrompt(discovered: DiscoveryResult): string {
   return lines.filter((l) => l !== undefined).join('\n')
 }
 
+// Formats a single discovered endpoint as a human-readable block; one entry in the synthesis prompt's endpoint list.
 function formatEndpoint(ep: DiscoveredEndpoint): string {
   const parts: string[] = [
     `${ep.method} ${ep.path}`,

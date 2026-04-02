@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { cacheLife } from 'next/cache';
+import { cacheLife, cacheTag } from 'next/cache';
 import { SpecInput } from '@/components/SpecInput';
 import { listIntegrations, type IntegrationSummary } from '@/lib/storage/neon';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +9,7 @@ import { RelativeTime } from '@/components/RelativeTime';
 async function getCachedIntegrations() {
   'use cache'
   cacheLife('minutes')
+  cacheTag('integrations')
   return listIntegrations(10)
 }
 
@@ -46,6 +47,7 @@ export default async function Home() {
             </div>
           </div>
         )}
+
       </div>
     </main>
   );

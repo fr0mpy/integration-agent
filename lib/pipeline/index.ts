@@ -1,118 +1,175 @@
-import { getWritable, createWebhook, createHook, sleep, fetch as wfFetch } from 'workflow'
-import { neonConfig } from '@neondatabase/serverless'
-import { createEvent, type PipelineEvent, type ValidateEventData, type DeployEventData, type AuditEventData } from './events'
-import type { DiscoveryResult } from './discover'
-import type { MCPServerConfig } from '../mcp/types'
-import type { SandboxResult } from './sandbox-check'
-import type { AuditResult } from './security-audit'
-import type { GitHubPRResult, MonorepoInfo, VercelDeployResult, VercelProjectResult, DeploymentInfo } from './deploy'
-import { config as appConfig } from '../config'
+import {
+  getWritable,
+  createWebhook,
+  createHook,
+  sleep,
+  fetch as wfFetch,
+} from "workflow";
+import { revalidateTag } from "next/cache";
+import { neonConfig } from "@neondatabase/serverless";
+import {
+  createEvent,
+  type PipelineEvent,
+  type ValidateEventData,
+  type DeployEventData,
+  type AuditEventData,
+} from "./events";
+import type { DiscoveryResult } from "./discover";
+import type { MCPServerConfig } from "../mcp/types";
+import type { SandboxResult } from "./sandbox-check";
+import type { AuditResult } from "./security-audit";
+import type {
+  GitHubPRResult,
+  MonorepoInfo,
+  VercelDeployResult,
+  VercelProjectResult,
+  DeploymentInfo,
+} from "./deploy";
+import { config as appConfig } from "../config";
 
 // WDK intercepts globalThis.fetch inside 'use step' / 'use workflow' functions and throws
 // if code tries to use it directly. Fix: configure Neon to use WDK's fetch, the officially
 // supported approach (https://useworkflow.dev/err/fetch-in-workflow).
-neonConfig.fetchFunction = wfFetch
+neonConfig.fetchFunction = wfFetch;
 
 // deploy.ts only reaches the module cache via dynamic imports inside step functions —
 // by the time those run, WDK has replaced globalThis.fetch with an error-throwing sentinel.
 // Force a static load here so deploy.ts's `const _fetch = globalThis.fetch` captures the
 // real fetch before any step executes.
-import './deploy'
+import "./deploy";
 
+// Writes a single typed event to the WDK SSE stream; every stage progress update the UI sees goes through here.
 async function emitEvent(event: PipelineEvent) {
-  'use step'
-  const writable = getWritable<PipelineEvent>()
-  const writer = writable.getWriter()
-  await writer.write(event)
-  writer.releaseLock()
+  "use step";
+  const writable = getWritable<PipelineEvent>();
+  const writer = writable.getWriter();
+  await writer.write(event);
+  writer.releaseLock();
 }
 
-async function checkDiscoveryCache(specHash: string): Promise<DiscoveryResult | null> {
-  'use step'
-  const { discoveryCache } = await import('../storage/redis')
-  return (await discoveryCache.get(specHash)) as DiscoveryResult | null
+// Returns a cached DiscoveryResult for this spec hash if one exists; skips re-scraping the same URL on retries.
+async function checkDiscoveryCache(
+  specHash: string,
+): Promise<DiscoveryResult | null> {
+  "use step";
+  const { discoveryCache } = await import("../storage/redis");
+  return (await discoveryCache.get(specHash)) as DiscoveryResult | null;
 }
 
-async function runDiscovery(spec: Record<string, unknown>): Promise<DiscoveryResult> {
-  'use step'
-  const { discoverEndpoints, enrichDiscovery } = await import('./discover')
-  const raw = await discoverEndpoints(spec)
-  return enrichDiscovery(raw)
+// Parses the OpenAPI spec and optionally enriches the endpoint list via AI; produces the structured input for synthesis.
+async function runDiscovery(
+  spec: Record<string, unknown>,
+): Promise<DiscoveryResult> {
+  "use step";
+  const { discoverEndpoints, enrichDiscovery } = await import("./discover");
+  const raw = await discoverEndpoints(spec);
+  return enrichDiscovery(raw);
 }
 
-async function runSynthesis(discovered: DiscoveryResult): Promise<MCPServerConfig> {
-  'use step'
-  const { synthesiseTools } = await import('./synthesise')
-  return synthesiseTools(discovered)
+// Calls the synthesis LLM to convert discovered endpoints into MCP tool definitions; first attempt with no prior error context.
+async function runSynthesis(
+  discovered: DiscoveryResult,
+): Promise<MCPServerConfig> {
+  "use step";
+  const { synthesiseTools } = await import("./synthesise");
+  return synthesiseTools(discovered);
 }
 
+// Retries synthesis with sandbox build errors injected into the prompt; called when the first codegen pass produces uncompilable TypeScript.
 async function runSynthesisWithBuildErrors(
   discovered: DiscoveryResult,
   buildErrors: string,
 ): Promise<MCPServerConfig> {
-  'use step'
-  const { synthesiseTools } = await import('./synthesise')
-  return synthesiseTools(discovered, buildErrors)
+  "use step";
+  const { synthesiseTools } = await import("./synthesise");
+  return synthesiseTools(discovered, buildErrors);
 }
 
-async function loadSourceOverride(integrationId: string): Promise<string | null> {
-  'use step'
-  const { sourceOverride } = await import('../storage/redis')
-  return sourceOverride.get(integrationId)
+// Fetches a user-edited source file from Redis if one exists; applied before each re-audit so manual edits are picked up.
+async function loadSourceOverride(
+  integrationId: string,
+): Promise<string | null> {
+  "use step";
+  const { sourceOverride } = await import("../storage/redis");
+  return sourceOverride.get(integrationId);
 }
 
-async function runCodegen(config: MCPServerConfig): Promise<{ files: Array<{ file: string; data: string }>; sourceCode: string }> {
-  'use step'
-  const { bundleServer } = await import('../mcp/bundle')
-  return bundleServer(config)
+// Bundles the MCP config into deployable Next.js files; produces the file set written to the sandbox and later pushed to GitHub.
+async function runCodegen(config: MCPServerConfig): Promise<{
+  files: Array<{ file: string; data: string }>;
+  sourceCode: string;
+}> {
+  "use step";
+  const { bundleServer } = await import("../mcp/bundle");
+  return bundleServer(config);
 }
 
+// Boots a Vercel Sandbox, builds and starts the MCP server, and verifies all tool names via a live MCP client call.
 async function runValidateSandbox(
   bundle: { files: Array<{ file: string; data: string }>; sourceCode: string },
   config: MCPServerConfig,
 ) {
-  'use step'
-  const { runSandboxCheck } = await import('./sandbox-check')
-  return runSandboxCheck(bundle, config)
+  "use step";
+  const { runSandboxCheck } = await import("./sandbox-check");
+  return runSandboxCheck(bundle, config);
 }
 
-async function cacheResults(specHash: string, specUrl: string, config: MCPServerConfig, discovered: DiscoveryResult) {
-  'use step'
-  const { configCache, urlCache, discoveryCache } = await import('../storage/redis')
-  await configCache.set(specHash, config)
-  await urlCache.setHash(specUrl, specHash)
-  await discoveryCache.set(specHash, discovered)
+// Writes discovery result to Redis immediately after discovery runs; safe to cache before sandbox since it's deterministic.
+async function cacheDiscovery(specHash: string, discovered: DiscoveryResult) {
+  "use step";
+  const { discoveryCache } = await import("../storage/redis");
+  await discoveryCache.set(specHash, discovered);
 }
 
+// Writes validated MCP config + URL index to Redis after sandbox passes; AI output must be validated before caching.
+// specUrlIndex is written last — it acts as the commit signal for the fast path in the synthesise route.
+async function cacheSynthesisResults(
+  specHash: string,
+  specUrl: string,
+  config: MCPServerConfig,
+) {
+  "use step";
+  const { mcpConfigCache, specUrlIndex } = await import("../storage/redis");
+  await mcpConfigCache.set(specHash, config);
+  await specUrlIndex.setHash(specUrl, specHash);
+}
+
+// Updates the integration row's status column in Postgres; drives the status badge in the UI.
 async function setIntegrationStatus(integrationId: string, status: string) {
-  'use step'
-  const { updateIntegration } = await import('../storage/neon')
-  await updateIntegration(integrationId, { status })
+  "use step";
+  const { updateIntegration } = await import("../storage/neon");
+  await updateIntegration(integrationId, { status });
 }
 
+// Saves sandbox ID, URL, and verified tool list to the integration row after the live MCP test passes.
 async function persistValidation(integrationId: string, result: SandboxResult) {
-  'use step'
-  const { updateIntegration } = await import('../storage/neon')
+  "use step";
+  const { updateIntegration } = await import("../storage/neon");
   await updateIntegration(integrationId, {
     sandbox_id: result.sandboxId,
     sandbox_url: result.sandboxUrl,
     verified_tools: result.verifiedTools,
     validated_at: new Date().toISOString(),
-  })
+  });
 }
 
+// Marks the integration as FAILED in Postgres; called from the catch block and all early-exit paths.
 async function failIntegration(integrationId: string) {
-  'use step'
-  const { updateIntegration, INTEGRATION_STATUS } = await import('../storage/neon')
-  await updateIntegration(integrationId, { status: INTEGRATION_STATUS.FAILED })
+  "use step";
+  const { updateIntegration, INTEGRATION_STATUS } =
+    await import("../storage/neon");
+  await updateIntegration(integrationId, { status: INTEGRATION_STATUS.FAILED });
+  revalidateTag('integrations', 'minutes');
 }
 
+// Idempotently creates or retrieves the shared generated-mcps GitHub repo that all MCP servers are deployed from.
 async function runEnsureMonorepo(): Promise<MonorepoInfo> {
-  'use step'
-  const { ensureMonorepo } = await import('./deploy')
-  return ensureMonorepo()
+  "use step";
+  const { ensureMonorepo } = await import("./deploy");
+  return ensureMonorepo();
 }
 
+// Creates a branch with the generated MCP files, opens a PR, and registers a webhook so the workflow resumes on merge.
 async function runCreateGitHubPR(
   integrationName: string,
   integrationId: string,
@@ -120,68 +177,97 @@ async function runCreateGitHubPR(
   monorepo: MonorepoInfo,
   webhookUrl: string,
 ): Promise<GitHubPRResult> {
-  'use step'
-  const { createGitHubPR } = await import('./deploy')
-  return createGitHubPR(integrationName, integrationId, files, monorepo, webhookUrl)
+  "use step";
+  const { createGitHubPR } = await import("./deploy");
+  return createGitHubPR(
+    integrationName,
+    integrationId,
+    files,
+    monorepo,
+    webhookUrl,
+  );
 }
 
+// Single GitHub API call to read the current PR state; used in the local-dev polling loop instead of webhooks.
 async function checkPRStatus(
   owner: string,
   repo: string,
   prNumber: number,
 ): Promise<{ state: string; merged: boolean }> {
-  'use step'
-  const { getOctokit } = await import('./deploy')
-  const octokit = getOctokit()
-  const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number: prNumber })
-  return { state: pr.state as string, merged: !!pr.merged }
+  "use step";
+  const { getOctokit } = await import("./deploy");
+  const octokit = getOctokit();
+  const { data: pr } = await octokit.pulls.get({
+    owner,
+    repo,
+    pull_number: prNumber,
+  });
+  return { state: pr.state as string, merged: !!pr.merged };
 }
 
-async function runDeleteGitHubWebhook(owner: string, repo: string, webhookId: number): Promise<void> {
-  'use step'
-  const { deleteGitHubWebhook } = await import('./deploy')
-  await deleteGitHubWebhook(owner, repo, webhookId)
+// Removes the GitHub webhook registered for this PR after it fires or the pipeline is cancelled.
+async function runDeleteGitHubWebhook(
+  owner: string,
+  repo: string,
+  webhookId: number,
+): Promise<void> {
+  "use step";
+  const { deleteGitHubWebhook } = await import("./deploy");
+  await deleteGitHubWebhook(owner, repo, webhookId);
 }
 
-async function persistPRInfo(integrationId: string, prResult: GitHubPRResult): Promise<void> {
-  'use step'
-  const { updateIntegration } = await import('../storage/neon')
+// Saves the PR URL and repo name to the integration row so the UI can link to it immediately after PR creation.
+async function persistPRInfo(
+  integrationId: string,
+  prResult: GitHubPRResult,
+): Promise<void> {
+  "use step";
+  const { updateIntegration } = await import("../storage/neon");
   await updateIntegration(integrationId, {
     github_repo_url: prResult.repoUrl,
     github_pr_url: prResult.prUrl,
     github_repo_name: prResult.repoName,
-  })
+  });
 }
 
+// Creates a Vercel project for this MCP server, links it to the monorepo subdirectory, and injects all required env vars.
 async function runCreateVercelProject(
   monorepo: MonorepoInfo,
   integrationId: string,
   integrationName: string,
 ): Promise<VercelProjectResult> {
-  'use step'
-  const { createVercelProject } = await import('./deploy')
-  return createVercelProject(monorepo, integrationId, integrationName)
+  "use step";
+  const { createVercelProject } = await import("./deploy");
+  return createVercelProject(monorepo, integrationId, integrationName);
 }
 
-async function runFindDeployment(vercelProjectId: string): Promise<DeploymentInfo | null> {
-  'use step'
-  const { findDeployment } = await import('./deploy')
-  return findDeployment(vercelProjectId)
+// Fetches the most recent Vercel deployment for the project; returns null if none has been queued yet.
+async function runFindDeployment(
+  vercelProjectId: string,
+): Promise<DeploymentInfo | null> {
+  "use step";
+  const { findDeployment } = await import("./deploy");
+  return findDeployment(vercelProjectId);
 }
 
-async function runCheckDeploymentStatus(deploymentUid: string): Promise<DeploymentInfo> {
-  'use step'
-  const { checkDeploymentStatus } = await import('./deploy')
-  return checkDeploymentStatus(deploymentUid)
+// Single Vercel API call to read the current build state for a known deployment UID; used in the polling loop.
+async function runCheckDeploymentStatus(
+  deploymentUid: string,
+): Promise<DeploymentInfo> {
+  "use step";
+  const { checkDeploymentStatus } = await import("./deploy");
+  return checkDeploymentStatus(deploymentUid);
 }
 
+// Saves the live MCP URL and deployment ID to the integration row and marks status as LIVE.
 async function persistDeployment(
   integrationId: string,
   prResult: GitHubPRResult,
   vercelResult: VercelDeployResult,
 ) {
-  'use step'
-  const { updateIntegration, INTEGRATION_STATUS } = await import('../storage/neon')
+  "use step";
+  const { updateIntegration, INTEGRATION_STATUS } =
+    await import("../storage/neon");
   await updateIntegration(integrationId, {
     status: INTEGRATION_STATUS.LIVE,
     mcp_url: vercelResult.mcpUrl,
@@ -189,17 +275,19 @@ async function persistDeployment(
     github_repo_url: prResult.repoUrl,
     github_pr_url: prResult.prUrl,
     github_repo_name: prResult.repoName,
-  })
+  });
+  revalidateTag('integrations', 'minutes');
 }
 
+// Runs deterministic + AI-assisted security checks on the generated config; blocks deploy if any check returns 'fail'.
 async function runSecurityAudit(
   config: MCPServerConfig,
   discovered: DiscoveryResult,
   sourceCode: string,
 ): Promise<AuditResult> {
-  'use step'
-  const { performSecurityAudit } = await import('./security-audit')
-  return performSecurityAudit(config, discovered, sourceCode)
+  "use step";
+  const { performSecurityAudit } = await import("./security-audit");
+  return performSecurityAudit(config, discovered, sourceCode);
 }
 
 /**
@@ -212,330 +300,472 @@ export async function synthesisePipeline(
   specHash: string,
   specUrl: string,
 ) {
-  'use workflow'
+  "use workflow";
 
   // Track which stage is active so the catch block emits the correct failed event
-  let currentStage: 'discover-api' | 'build-mcp' | 'preview-mcp' | 'audit-mcp' | 'deploy-mcp' = 'discover-api'
+  let currentStage:
+    | "discover-api"
+    | "build-mcp"
+    | "preview-mcp"
+    | "audit-mcp"
+    | "deploy-mcp" = "discover-api";
 
   try {
     // Stage 1: Discovery + Enrichment
     // Fast path: skip AI enrichment call if we've already processed this spec before
-    await emitEvent(createEvent('discover-api', 'running'))
-    const cachedDiscovery = await checkDiscoveryCache(specHash)
-    const discovered = cachedDiscovery ?? await runDiscovery(spec)
-    await emitEvent(createEvent('discover-api', 'complete', discovered))
+    await emitEvent(createEvent("discover-api", "running"));
+    const cachedDiscovery = await checkDiscoveryCache(specHash);
+    const discovered = cachedDiscovery ?? (await runDiscovery(spec));
+    if (!cachedDiscovery) await cacheDiscovery(specHash, discovered);
+    await emitEvent(createEvent("discover-api", "complete", discovered));
 
-    await setIntegrationStatus(integrationId, 'synthesising')
+    await setIntegrationStatus(integrationId, "synthesising");
 
     // Stage 2: Synthesis
-    currentStage = 'build-mcp'
-    await emitEvent(createEvent('build-mcp', 'running'))
-    let config = await runSynthesis(discovered)
+    currentStage = "build-mcp";
+    await emitEvent(createEvent("build-mcp", "running"));
+    let config = await runSynthesis(discovered);
 
     for (const tool of config.tools) {
-      await emitEvent(createEvent('build-mcp', 'tool_complete', tool))
+      await emitEvent(createEvent("build-mcp", "tool_complete", tool));
     }
 
-    await emitEvent(createEvent('build-mcp', 'complete', config))
+    await emitEvent(createEvent("build-mcp", "complete", config));
 
     // ─── Pause: Wait for user to review tools and trigger build ───────────────
-    await emitEvent(createEvent('build-mcp', 'awaiting-trigger'))
+    await emitEvent(createEvent("build-mcp", "awaiting-trigger"));
 
     using buildHook = createHook<{ excludedTools: string[] }>({
       token: `build-trigger:${integrationId}`,
-    })
-    const buildPayload = await buildHook
+    });
+    const buildPayload = await buildHook;
 
     // Filter out tools the user toggled off
     if (buildPayload.excludedTools.length > 0) {
-      const excluded = new Set(buildPayload.excludedTools)
+      const excluded = new Set(buildPayload.excludedTools);
       config = {
         ...config,
         tools: config.tools.filter((t) => !excluded.has(t.name)),
-      }
+      };
     }
 
     // Silent structural pre-flight — not a visible stage
-    const { validateConfig } = await import('./validate')
-    const structural = validateConfig(config, discovered)
+    const { validateConfig } = await import("./validate");
+    const structural = validateConfig(config, discovered);
 
     if (!structural.valid) {
-      const errorMsg = structural.errors.map((e) => `${e.tool}: ${e.message}`).join('; ')
-      await emitEvent(createEvent('preview-mcp', 'failed', { errors: errorMsg } satisfies ValidateEventData))
-      await failIntegration(integrationId)
-      await emitEvent(createEvent('preview-mcp', 'done'))
-      return config
+      const errorMsg = structural.errors
+        .map((e) => `${e.tool}: ${e.message}`)
+        .join("; ");
+      await emitEvent(
+        createEvent("preview-mcp", "failed", {
+          errors: errorMsg,
+        } satisfies ValidateEventData),
+      );
+      await failIntegration(integrationId);
+      await emitEvent(createEvent("preview-mcp", "done"));
+      return config;
     }
 
     // Codegen
-    currentStage = 'preview-mcp'
-    let bundle = await runCodegen(config)
+    currentStage = "preview-mcp";
+    let bundle = await runCodegen(config);
 
     // Stage 3: Validate — build + start + live MCP test
-    await emitEvent(createEvent('preview-mcp', 'running', { sourceCode: bundle.sourceCode } satisfies ValidateEventData))
-    await setIntegrationStatus(integrationId, 'validating')
+    await emitEvent(
+      createEvent("preview-mcp", "running", {
+        sourceCode: bundle.sourceCode,
+      } satisfies ValidateEventData),
+    );
+    await setIntegrationStatus(integrationId, "validating");
 
-    let sandboxResult = await runValidateSandbox(bundle, config)
+    let sandboxResult = await runValidateSandbox(bundle, config);
 
     for (const log of sandboxResult.buildLogs) {
-      await emitEvent(createEvent('preview-mcp', 'building', { buildLog: log } satisfies ValidateEventData))
+      await emitEvent(
+        createEvent("preview-mcp", "building", {
+          buildLog: log,
+        } satisfies ValidateEventData),
+      );
     }
 
     // Sandbox build failed — retry synthesis once with build errors as context
     if (!sandboxResult.ok && sandboxResult.errors) {
-      await emitEvent(createEvent('preview-mcp', 'retrying', { errors: sandboxResult.errors } satisfies ValidateEventData))
-      currentStage = 'build-mcp'
-      await emitEvent(createEvent('build-mcp', 'running'))
-      config = await runSynthesisWithBuildErrors(discovered, sandboxResult.errors)
+      await emitEvent(
+        createEvent("preview-mcp", "retrying", {
+          errors: sandboxResult.errors,
+        } satisfies ValidateEventData),
+      );
+      currentStage = "build-mcp";
+      await emitEvent(createEvent("build-mcp", "running"));
+      config = await runSynthesisWithBuildErrors(
+        discovered,
+        sandboxResult.errors,
+      );
 
       for (const tool of config.tools) {
-        await emitEvent(createEvent('build-mcp', 'tool_complete', tool))
+        await emitEvent(createEvent("build-mcp", "tool_complete", tool));
       }
 
-      await emitEvent(createEvent('build-mcp', 'complete', config))
+      await emitEvent(createEvent("build-mcp", "complete", config));
 
-      currentStage = 'preview-mcp'
-      bundle = await runCodegen(config)
-      await emitEvent(createEvent('preview-mcp', 'running', { sourceCode: bundle.sourceCode } satisfies ValidateEventData))
+      currentStage = "preview-mcp";
+      bundle = await runCodegen(config);
+      await emitEvent(
+        createEvent("preview-mcp", "running", {
+          sourceCode: bundle.sourceCode,
+        } satisfies ValidateEventData),
+      );
 
-      sandboxResult = await runValidateSandbox(bundle, config)
+      sandboxResult = await runValidateSandbox(bundle, config);
 
       for (const log of sandboxResult.buildLogs) {
-        await emitEvent(createEvent('preview-mcp', 'building', { buildLog: log } satisfies ValidateEventData))
+        await emitEvent(
+          createEvent("preview-mcp", "building", {
+            buildLog: log,
+          } satisfies ValidateEventData),
+        );
       }
     }
 
     if (!sandboxResult.ok) {
-      await emitEvent(createEvent('preview-mcp', 'failed', { error: sandboxResult.errors ?? 'Sandbox build failed' }))
-      await failIntegration(integrationId)
-      await emitEvent(createEvent('preview-mcp', 'done'))
-      return config
+      await emitEvent(
+        createEvent("preview-mcp", "failed", {
+          error: sandboxResult.errors ?? "Sandbox build failed",
+        }),
+      );
+      await failIntegration(integrationId);
+      await emitEvent(createEvent("preview-mcp", "done"));
+      return config;
     }
 
-    await emitEvent(createEvent('preview-mcp', 'complete', {
-      verifiedTools: sandboxResult.verifiedTools,
-      toolCount: sandboxResult.verifiedTools.length,
-      sandboxUrl: sandboxResult.sandboxUrl,
-      sandboxId: sandboxResult.sandboxId,
-    } satisfies ValidateEventData))
+    await emitEvent(
+      createEvent("preview-mcp", "complete", {
+        verifiedTools: sandboxResult.verifiedTools,
+        toolCount: sandboxResult.verifiedTools.length,
+        sandboxUrl: sandboxResult.sandboxUrl,
+        sandboxId: sandboxResult.sandboxId,
+      } satisfies ValidateEventData),
+    );
 
     // Persist validation proof to Neon
-    await persistValidation(integrationId, sandboxResult)
+    await persistValidation(integrationId, sandboxResult);
 
     // Cache results only after validation passes
-    await cacheResults(specHash, specUrl, config, discovered)
+    await cacheSynthesisResults(specHash, specUrl, config);
 
-    await emitEvent(createEvent('preview-mcp', 'done'))
+    await emitEvent(createEvent("preview-mcp", "done"));
 
     // ─── Pause: Wait for manual trigger (iterable — allows re-runs) ─────────
-    await emitEvent(createEvent('audit-mcp', 'awaiting-trigger'))
+    await emitEvent(createEvent("audit-mcp", "awaiting-trigger"));
 
     using auditHook = createHook<{ triggered: boolean }>({
       token: `audit-trigger:${integrationId}`,
-    })
+    });
 
     for await (const _trigger of auditHook) {
       // Apply user edits (if any) before each audit run
-      const editedSource = await loadSourceOverride(integrationId)
+      const editedSource = await loadSourceOverride(integrationId);
 
       if (editedSource) {
         bundle = {
           ...bundle,
           sourceCode: editedSource,
-          files: bundle.files.map(f =>
-            f.file === 'app/[transport]/route.ts' ? { ...f, data: editedSource } : f
+          files: bundle.files.map((f) =>
+            f.file === "app/[transport]/route.ts"
+              ? { ...f, data: editedSource }
+              : f,
           ),
-        }
+        };
       }
 
       // ─── Stage 3.5: Security Audit ─────────────────────────────────────────
-      currentStage = 'audit-mcp'
-      await emitEvent(createEvent('audit-mcp', 'running'))
+      currentStage = "audit-mcp";
+      await emitEvent(createEvent("audit-mcp", "running"));
 
-      const auditResult = await runSecurityAudit(config, discovered, bundle.sourceCode)
+      const auditResult = await runSecurityAudit(
+        config,
+        discovered,
+        bundle.sourceCode,
+      );
 
       for (const auditFinding of auditResult.findings) {
-        await emitEvent(createEvent('audit-mcp', 'finding', { finding: auditFinding } satisfies AuditEventData))
+        await emitEvent(
+          createEvent("audit-mcp", "finding", {
+            finding: auditFinding,
+          } satisfies AuditEventData),
+        );
       }
 
-      const auditStatus = auditResult.passed ? 'complete' : 'failed'
-      await emitEvent(createEvent('audit-mcp', auditStatus, {
-        summary: auditResult.summary,
-        blocked: !auditResult.passed,
-      } satisfies AuditEventData))
+      const auditStatus = auditResult.passed ? "complete" : "failed";
+      await emitEvent(
+        createEvent("audit-mcp", auditStatus, {
+          summary: auditResult.summary,
+          blocked: !auditResult.passed,
+        } satisfies AuditEventData),
+      );
 
-      if (auditResult.passed) break
+      if (auditResult.passed) break;
 
       // Audit failed — wait for user to re-trigger
-      await emitEvent(createEvent('audit-mcp', 'awaiting-trigger'))
+      await emitEvent(createEvent("audit-mcp", "awaiting-trigger"));
     }
 
     // ─── Stage 4: Deploy MCP ─────────────────────────────────────────────────
-    currentStage = 'deploy-mcp'
-    await emitEvent(createEvent('deploy-mcp', 'running', { step: 'create-repo' } satisfies DeployEventData))
-    await setIntegrationStatus(integrationId, 'deploying')
+    currentStage = "deploy-mcp";
+    await emitEvent(
+      createEvent("deploy-mcp", "running", {
+        step: "create-repo",
+      } satisfies DeployEventData),
+    );
+    await setIntegrationStatus(integrationId, "deploying");
 
-    const monorepo = await runEnsureMonorepo()
+    const monorepo = await runEnsureMonorepo();
 
-    await emitEvent(createEvent('deploy-mcp', 'running', { step: 'push-files', repoName: monorepo.repoName } satisfies DeployEventData))
+    await emitEvent(
+      createEvent("deploy-mcp", "running", {
+        step: "push-files",
+        repoName: monorepo.repoName,
+      } satisfies DeployEventData),
+    );
 
     // Create a Workflow webhook — GitHub will POST to this URL when the PR is merged,
     // suspending the workflow durably instead of polling.
-    using prWebhook = createWebhook({ respondWith: Response.json({ ok: true }) })
+    using prWebhook = createWebhook({
+      respondWith: Response.json({ ok: true }),
+    });
 
-    const prResult = await runCreateGitHubPR(discovered.apiName, integrationId, bundle.files, monorepo, prWebhook.url)
+    const prResult = await runCreateGitHubPR(
+      discovered.apiName,
+      integrationId,
+      bundle.files,
+      monorepo,
+      prWebhook.url,
+    );
 
     // Persist PR info immediately so the UI can show the link even if the user refreshes
-    await persistPRInfo(integrationId, prResult)
+    await persistPRInfo(integrationId, prResult);
 
-    await emitEvent(createEvent('deploy-mcp', 'running', {
-      step: 'pr-open',
-      prUrl: prResult.prUrl,
-      prTitle: prResult.prTitle,
-      repoUrl: prResult.repoUrl,
-      repoName: prResult.repoName,
-      prStatus: 'open',
-    } satisfies DeployEventData))
+    await emitEvent(
+      createEvent("deploy-mcp", "running", {
+        step: "pr-open",
+        prUrl: prResult.prUrl,
+        prTitle: prResult.prTitle,
+        repoUrl: prResult.repoUrl,
+        repoName: prResult.repoName,
+        prStatus: "open",
+      } satisfies DeployEventData),
+    );
 
-    await emitEvent(createEvent('deploy-mcp', 'running', {
-      step: 'await-merge',
-      prUrl: prResult.prUrl,
-      prStatus: 'open',
-      waitMessage: 'Waiting for PR to be merged...',
-    } satisfies DeployEventData))
+    await emitEvent(
+      createEvent("deploy-mcp", "running", {
+        step: "await-merge",
+        prUrl: prResult.prUrl,
+        prStatus: "open",
+        waitMessage: "Waiting for PR to be merged...",
+      } satisfies DeployEventData),
+    );
 
     // Wait for the PR to be merged.
     // In prod: suspend durably via GitHub webhook (event-driven).
     // In dev: GitHub rejects localhost webhook URLs, so poll the API every 30s instead.
-    const isLocalDev = appConfig.deploy.localUrlPrefixes.some((p) => prWebhook.url.startsWith(p))
+    const isLocalDev = appConfig.deploy.localUrlPrefixes.some((p) =>
+      prWebhook.url.startsWith(p),
+    );
 
-    let mergeResult = { merged: false, closedWithoutMerge: false }
+    let mergeResult = { merged: false, closedWithoutMerge: false };
 
     if (isLocalDev) {
-      const POLL_DEADLINE_MS = 24 * 60 * 60 * 1000
-      const pollStart = Date.now()
+      const POLL_DEADLINE_MS = 24 * 60 * 60 * 1000;
+      const pollStart = Date.now();
 
       while (Date.now() - pollStart < POLL_DEADLINE_MS) {
-        const prStatus = await checkPRStatus(prResult.repoOwner, prResult.repoName, prResult.prNumber)
+        const prStatus = await checkPRStatus(
+          prResult.repoOwner,
+          prResult.repoName,
+          prResult.prNumber,
+        );
 
-        if (prStatus.state === 'closed') {
-          mergeResult = { merged: prStatus.merged, closedWithoutMerge: !prStatus.merged }
-          break
+        if (prStatus.state === "closed") {
+          mergeResult = {
+            merged: prStatus.merged,
+            closedWithoutMerge: !prStatus.merged,
+          };
+          break;
         }
 
-        await sleep('30s')
+        await sleep("30s");
       }
     } else {
-      type GHPREvent = { action?: string; pull_request?: { number: number; merged: boolean } }
+      type GHPREvent = {
+        action?: string;
+        pull_request?: { number: number; merged: boolean };
+      };
 
       for await (const ghRequest of prWebhook) {
-        const body = await ghRequest.json() as GHPREvent
-        if (body.pull_request?.number !== prResult.prNumber) continue
+        const body = (await ghRequest.json()) as GHPREvent;
+        if (body.pull_request?.number !== prResult.prNumber) continue;
 
-        if (body.action === 'closed' && body.pull_request?.merged === true) {
-          mergeResult = { merged: true, closedWithoutMerge: false }
-          break
+        if (body.action === "closed" && body.pull_request?.merged === true) {
+          mergeResult = { merged: true, closedWithoutMerge: false };
+          break;
         }
 
-        if (body.action === 'closed') {
-          mergeResult = { merged: false, closedWithoutMerge: true }
-          break
+        if (body.action === "closed") {
+          mergeResult = { merged: false, closedWithoutMerge: true };
+          break;
         }
       }
 
-      await runDeleteGitHubWebhook(prResult.repoOwner, prResult.repoName, prResult.githubWebhookId)
+      await runDeleteGitHubWebhook(
+        prResult.repoOwner,
+        prResult.repoName,
+        prResult.githubWebhookId,
+      );
     }
 
     if (!mergeResult.merged) {
       const reason = mergeResult.closedWithoutMerge
-        ? 'PR was closed without merging.'
-        : 'Timed out waiting for PR merge (24h limit).'
-      await emitEvent(createEvent('deploy-mcp', 'failed', { error: reason } satisfies DeployEventData))
-      await failIntegration(integrationId)
-      await emitEvent(createEvent('deploy-mcp', 'done'))
-      return config
+        ? "PR was closed without merging."
+        : "Timed out waiting for PR merge (24h limit).";
+      await emitEvent(
+        createEvent("deploy-mcp", "failed", {
+          error: reason,
+        } satisfies DeployEventData),
+      );
+      await failIntegration(integrationId);
+      await emitEvent(createEvent("deploy-mcp", "done"));
+      return config;
     }
 
-    await emitEvent(createEvent('deploy-mcp', 'running', {
-      step: 'merged',
-      prUrl: prResult.prUrl,
-      prStatus: 'merged',
-    } satisfies DeployEventData))
+    await emitEvent(
+      createEvent("deploy-mcp", "running", {
+        step: "merged",
+        prUrl: prResult.prUrl,
+        prStatus: "merged",
+      } satisfies DeployEventData),
+    );
 
-    await emitEvent(createEvent('deploy-mcp', 'running', {
-      step: 'deploying',
-    } satisfies DeployEventData))
+    await emitEvent(
+      createEvent("deploy-mcp", "running", {
+        step: "deploying",
+      } satisfies DeployEventData),
+    );
 
-    const projectResult = await runCreateVercelProject(monorepo, integrationId, discovered.apiName)
+    const projectResult = await runCreateVercelProject(
+      monorepo,
+      integrationId,
+      discovered.apiName,
+    );
 
     for (const line of projectResult.setupLogs) {
-      await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: line } satisfies DeployEventData))
+      await emitEvent(
+        createEvent("deploy-mcp", "building", {
+          buildLog: line,
+        } satisfies DeployEventData),
+      );
     }
 
     // Poll for deployment to appear — emit progress events each iteration to keep SSE alive
-    await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: 'Waiting for Vercel to queue a deployment...' } satisfies DeployEventData))
-    const APPEAR_TIMEOUT_MS = 5 * 60 * 1000
-    const APPEAR_POLL_MS = 20_000
-    const appearDeadline = Date.now() + APPEAR_TIMEOUT_MS
-    let deployment: DeploymentInfo | null = null
+    await emitEvent(
+      createEvent("deploy-mcp", "building", {
+        buildLog: "Waiting for Vercel to queue a deployment...",
+      } satisfies DeployEventData),
+    );
+    const APPEAR_TIMEOUT_MS = 5 * 60 * 1000;
+    const APPEAR_POLL_MS = 20_000;
+    const appearDeadline = Date.now() + APPEAR_TIMEOUT_MS;
+    let deployment: DeploymentInfo | null = null;
 
     while (!deployment) {
       if (Date.now() > appearDeadline) {
-        throw new Error('No deployment appeared within 5 minutes — check the Vercel dashboard.')
+        throw new Error(
+          "No deployment appeared within 5 minutes — check the Vercel dashboard.",
+        );
       }
-      await sleep(APPEAR_POLL_MS)
-      deployment = await runFindDeployment(projectResult.vercelProjectId)
+      await sleep(APPEAR_POLL_MS);
+      deployment = await runFindDeployment(projectResult.vercelProjectId);
       if (!deployment) {
-        await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: 'Still waiting for deployment...' } satisfies DeployEventData))
+        await emitEvent(
+          createEvent("deploy-mcp", "building", {
+            buildLog: "Still waiting for deployment...",
+          } satisfies DeployEventData),
+        );
       }
     }
 
-    await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: `Deployment found: ${deployment.uid} (state: ${deployment.readyState})` } satisfies DeployEventData))
+    await emitEvent(
+      createEvent("deploy-mcp", "building", {
+        buildLog: `Deployment found: ${deployment.uid} (state: ${deployment.readyState})`,
+      } satisfies DeployEventData),
+    );
 
     // Poll until deployment reaches READY or ERROR — emit status each iteration
-    const BUILD_TIMEOUT_MS = 10 * 60 * 1000
-    const buildDeadline = Date.now() + BUILD_TIMEOUT_MS
+    const BUILD_TIMEOUT_MS = 10 * 60 * 1000;
+    const buildDeadline = Date.now() + BUILD_TIMEOUT_MS;
 
-    while (deployment.readyState !== 'READY' && deployment.readyState !== 'ERROR') {
+    while (
+      deployment.readyState !== "READY" &&
+      deployment.readyState !== "ERROR"
+    ) {
       if (Date.now() > buildDeadline) {
-        throw new Error('Vercel deployment timed out after 10 minutes.')
+        throw new Error("Vercel deployment timed out after 10 minutes.");
       }
-      await sleep(5_000)
-      deployment = await runCheckDeploymentStatus(deployment.uid)
-      await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: `Building... (${deployment.readyState})` } satisfies DeployEventData))
+      await sleep(5_000);
+      deployment = await runCheckDeploymentStatus(deployment.uid);
+      await emitEvent(
+        createEvent("deploy-mcp", "building", {
+          buildLog: `Building... (${deployment.readyState})`,
+        } satisfies DeployEventData),
+      );
     }
 
-    if (deployment.readyState === 'ERROR') {
-      throw new Error('Vercel deployment failed — check the Vercel dashboard for build logs.')
+    if (deployment.readyState === "ERROR") {
+      throw new Error(
+        "Vercel deployment failed — check the Vercel dashboard for build logs.",
+      );
     }
 
-    await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: '✓ Deployment READY' } satisfies DeployEventData))
+    await emitEvent(
+      createEvent("deploy-mcp", "building", {
+        buildLog: "✓ Deployment READY",
+      } satisfies DeployEventData),
+    );
 
     const vercelResult: VercelDeployResult = {
       vercelProjectId: projectResult.vercelProjectId,
       deploymentId: deployment.uid,
       mcpUrl: `https://${deployment.url}`,
       buildLogs: [],
-    }
+    };
 
-    await persistDeployment(integrationId, prResult, vercelResult)
+    await persistDeployment(integrationId, prResult, vercelResult);
 
-    await emitEvent(createEvent('deploy-mcp', 'complete', {
-      step: 'live',
-      mcpUrl: vercelResult.mcpUrl,
-      deploymentId: vercelResult.deploymentId,
-      prUrl: prResult.prUrl,
-      repoUrl: prResult.repoUrl,
-    } satisfies DeployEventData))
+    await emitEvent(
+      createEvent("deploy-mcp", "complete", {
+        step: "live",
+        mcpUrl: vercelResult.mcpUrl,
+        deploymentId: vercelResult.deploymentId,
+        prUrl: prResult.prUrl,
+        repoUrl: prResult.repoUrl,
+      } satisfies DeployEventData),
+    );
 
-    await emitEvent(createEvent('deploy-mcp', 'done'))
+    await emitEvent(createEvent("deploy-mcp", "done"));
 
-    return config
+    return config;
   } catch (err) {
-    console.error('Pipeline error:', err instanceof Error ? err.message : 'unknown')
-    await emitEvent(createEvent(currentStage, 'failed', { error: 'Pipeline failed. Please try again.' }))
-    await failIntegration(integrationId)
-    await emitEvent(createEvent(currentStage, 'done'))
-    throw err
+    console.error(
+      "Pipeline error:",
+      err instanceof Error ? err.message : "unknown",
+    );
+    await emitEvent(
+      createEvent(currentStage, "failed", {
+        error: "Pipeline failed. Please try again.",
+      }),
+    );
+    await failIntegration(integrationId);
+    await emitEvent(createEvent(currentStage, "done"));
+    throw err;
   }
 }

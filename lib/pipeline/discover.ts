@@ -59,6 +59,7 @@ export interface DiscoveryResult {
 
 // ── Spec parsing helpers ──────────────────────────────────────────────────────
 
+// Buckets endpoints by their first path segment (e.g. /pets → 'pets'); keeps enrichment prompts focused per resource.
 function groupEndpoints(endpoints: DiscoveredEndpoint[]): Record<string, DiscoveredEndpoint[]> {
   const groups: Record<string, DiscoveredEndpoint[]> = {}
 
@@ -85,6 +86,7 @@ const EnrichmentSchema = z.object({
   })),
 })
 
+// Returns true when the spec needs AI enrichment: more than 50 endpoints, missing operationIds, or vague summaries.
 export function needsEnrichment(result: DiscoveryResult): boolean {
   if (result.endpointCount > MAX_ENDPOINTS) return true
   if (result.endpoints.some((e) => e.operationId === null)) return true
@@ -259,6 +261,7 @@ export async function discoverEndpoints(spec: Record<string, unknown>): Promise<
   }
 }
 
+// Pulls the server URL from OpenAPI 3.x servers[0] or builds it from Swagger 2.x host + basePath.
 function extractBaseUrl(spec: Record<string, unknown>): string {
   // OpenAPI 3.x
   const servers = spec.servers as Array<{ url?: string }> | undefined
@@ -277,6 +280,7 @@ function extractBaseUrl(spec: Record<string, unknown>): string {
   return ''
 }
 
+// Infers the API's auth scheme and header name from securitySchemes / securityDefinitions; populates the generated config.
 function extractAuth(spec: Record<string, unknown>): {
   authMethod: DiscoveryResult['authMethod']
   authHeader: string | null
@@ -317,6 +321,7 @@ function extractAuth(spec: Record<string, unknown>): {
   return { authMethod: 'none', authHeader: null }
 }
 
+// Merges path-level and operation-level parameters, with operation params taking precedence by name+in.
 function extractParameters(
   operation: Record<string, unknown>,
   pathItem: Record<string, unknown>,
@@ -341,6 +346,7 @@ function extractParameters(
   })
 }
 
+// Extracts the first content-type's schema from a request body definition; used for POST/PUT tool inputs.
 function extractRequestBody(operation: Record<string, unknown>): RequestBodyInfo | null {
   const requestBody = operation.requestBody as Record<string, unknown> | undefined
   if (!requestBody) return null
@@ -360,6 +366,7 @@ function extractRequestBody(operation: Record<string, unknown>): RequestBodyInfo
 
 const MAX_SCHEMA_DEPTH = 2
 
+// Flattens a JSON Schema object's properties into a structured SchemaInfo; feeds the synthesis prompt.
 function extractSchemaInfo(schema: Record<string, unknown>): SchemaInfo {
   const properties = (schema.properties ?? {}) as Record<string, Record<string, unknown>>
   const required = (schema.required ?? []) as string[]
@@ -377,6 +384,7 @@ function extractSchemaInfo(schema: Record<string, unknown>): SchemaInfo {
   }
 }
 
+// Recursively maps a single schema property to a typed PropertyInfo, capped at 2 levels to avoid prompt bloat.
 function extractPropertyInfo(prop: Record<string, unknown>, depth: number): PropertyInfo {
   const type = String(prop.type ?? 'string')
   const info: PropertyInfo = {
@@ -410,6 +418,7 @@ function extractPropertyInfo(prop: Record<string, unknown>, depth: number): Prop
   return info
 }
 
+// Collects HTTP response codes and descriptions for an operation; included in the synthesis prompt for context.
 function extractResponses(operation: Record<string, unknown>): Record<string, string> {
   const responses = (operation.responses ?? {}) as Record<string, Record<string, unknown>>
   const result: Record<string, string> = {}

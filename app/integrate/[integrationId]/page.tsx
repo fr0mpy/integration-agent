@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation'
 import { PipelineView } from '@/components/PipelineView'
 import { getIntegration, hasCredentials } from '@/lib/storage/neon'
 import { isValidUUID } from '@/lib/validation'
-import { configCache } from '@/lib/storage/redis'
+import { mcpConfigCache } from '@/lib/storage/redis'
 import type { MCPServerConfig } from '@/lib/mcp/types'
 
 export default async function IntegrationPage({
@@ -26,7 +26,7 @@ export default async function IntegrationPage({
   }
 
   // Resolve auth method from cached config (Redis) — used to decide whether to show credential input
-  const config = await configCache.get(integration.spec_hash) as MCPServerConfig | null
+  const config = await mcpConfigCache.get(integration.spec_hash) as MCPServerConfig | null
   const authMethod = config?.authMethod ?? null
 
   // Cache hits never start a workflow, so run_id stays null

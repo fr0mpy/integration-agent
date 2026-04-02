@@ -2,10 +2,10 @@ import { Sandbox } from '@vercel/sandbox'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { getIntegration, updateIntegration } from '@/lib/storage/neon'
-import { configCache, sourceOverride } from '@/lib/storage/redis'
+import { mcpConfigCache, sourceOverride } from '@/lib/storage/redis'
 import { bundleServer } from '@/lib/mcp/bundle'
 import { isValidUUID } from '@/lib/validation'
-import { errors } from '@/lib/api/response'
+import { success, errors } from '@/lib/api/response'
 import type { MCPServerConfig } from '@/lib/mcp/types'
 
 export const maxDuration = 300
@@ -35,7 +35,7 @@ export async function POST(
     return errors.notFound('Integration not found.')
   }
 
-  const config = await configCache.get(integration.spec_hash) as MCPServerConfig | null
+  const config = await mcpConfigCache.get(integration.spec_hash) as MCPServerConfig | null
 
   if (!config) {
     return errors.notFound('Config not cached. Re-run the pipeline first.')
@@ -52,10 +52,10 @@ export async function POST(
 
       if (result.tools.length > 0) {
         // Sandbox still alive — return it
-        return Response.json({ type: 'ready', sandboxUrl: integration.sandbox_url, sandboxId: integration.sandbox_id })
+        return success({ type: 'ready', sandboxUrl: integration.sandbox_url, sandboxId: integration.sandbox_id })
       }
-    } catch {
-      // Sandbox dead — continue to spin up a new one
+    } catch (err) {
+      console.warn('Sandbox health check failed:', err instanceof Error ? err.message : 'unknown')
     }
   }
 
@@ -90,7 +90,8 @@ export async function POST(
           timeout: SANDBOX_LIVE_TIMEOUT_MS,
         })
       } catch (err) {
-        send({ type: 'error', message: `Sandbox creation failed: ${err instanceof Error ? err.message : String(err)}` })
+        console.error('Sandbox creation failed:', err instanceof Error ? err.message : 'unknown')
+        send({ type: 'error', message: 'Sandbox creation failed.' })
         controller.close()
         return
       }
@@ -110,7 +111,8 @@ export async function POST(
         if (install.exitCode !== 0) {
           failed = true
           const stderr = await install.stderr()
-          send({ type: 'error', message: `npm install failed: ${stderr}` })
+          console.error('npm install failed:', stderr)
+          send({ type: 'error', message: 'Dependency installation failed.' })
           controller.close()
           return
         }
@@ -122,7 +124,8 @@ export async function POST(
         if (build.exitCode !== 0) {
           failed = true
           const stderr = await build.stderr()
-          send({ type: 'error', message: `Build failed: ${stderr}` })
+          console.error('Sandbox build failed:', stderr)
+          send({ type: 'error', message: 'Build failed.' })
           controller.close()
           return
         }

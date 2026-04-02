@@ -31,7 +31,7 @@ export async function POST(
     await resumeHook(`build-trigger:${integrationId}`, { excludedTools })
     return success({ ok: true })
   } catch (err) {
-    console.error('Failed to resume build hook:', err)
+    console.error('Failed to resume build hook:', err instanceof Error ? err.message : 'unknown')
     return errors.serviceUnavailable(
       'Failed to trigger build. The pipeline may have already completed or expired.',
     )

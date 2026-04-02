@@ -21,6 +21,7 @@ export interface GitHubPRResult {
 
 const MONOREPO_NAME = 'generated-mcps'
 
+// Returns an authenticated Octokit REST client; throws immediately if GITHUB_TOKEN is not set.
 export function getOctokit() {
   const token = process.env.GITHUB_TOKEN
   if (!token) throw new Error('GITHUB_TOKEN is not set')
