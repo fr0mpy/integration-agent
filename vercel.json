@@ -1,5 +1,8 @@
 {
   "fluid": true,
+  "git": {
+    "deploymentEnabled": false
+  },
   "functions": {
     "app/api/pipeline/**": { "maxDuration": 300 },
     "app/api/synthesise/**": { "maxDuration": 60 }

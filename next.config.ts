@@ -4,6 +4,10 @@ import { withWorkflow } from 'workflow/next'
 const isDev = process.env.NODE_ENV === 'development'
 
 const nextConfig: NextConfig = {
+  cacheComponents: true,
+  outputFileTracingIncludes: {
+    '/api/*': ['./generated-server-template/**/*'],
+  },
   async headers() {
     return [
       {
