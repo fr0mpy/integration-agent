@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { CodeViewer } from './CodeViewer'
@@ -62,16 +62,19 @@ export function ValidatePanel({
     if (!credential.trim()) return
     setSaving(true)
     setCredError(null)
+
     try {
       const res = await fetch(`/api/integrate/${integrationId}/credentials`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ credential: credential.trim() }),
       })
+
       if (!res.ok) {
-        const text = await res.text()
-        throw new Error(text.slice(0, 200))
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error ?? 'Failed to save credentials')
       }
+
       setHasCredentials(true)
       setCredential('')
     } catch (err) {
@@ -85,13 +88,19 @@ export function ValidatePanel({
     if (!credential.trim()) return
     setSaving(true)
     setCredError(null)
+
     try {
       const saveRes = await fetch(`/api/integrate/${integrationId}/credentials`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ credential: credential.trim() }),
       })
-      if (!saveRes.ok) throw new Error(await saveRes.text())
+
+      if (!saveRes.ok) {
+        const data = await saveRes.json().catch(() => ({}))
+        throw new Error(data.error ?? 'Failed to save credentials')
+      }
+
       setHasCredentials(true)
       setCredential('')
     } catch (err) {
@@ -99,14 +108,17 @@ export function ValidatePanel({
       setSaving(false)
       return
     }
+
     setSaving(false)
 
     // Now test
     setTesting(true)
+
     try {
       const res = await fetch(`/api/integrate/${integrationId}/revalidate`, { method: 'POST' })
       const data = await res.json() as RevalidateResponse
       setLiveResults(data.results)
+
       if (data.ok && data.liveValidatedAt) {
         setLiveValidatedAt(data.liveValidatedAt)
       } else if (!data.ok) {
@@ -122,10 +134,12 @@ export function ValidatePanel({
   async function handleTest() {
     setTesting(true)
     setCredError(null)
+
     try {
       const res = await fetch(`/api/integrate/${integrationId}/revalidate`, { method: 'POST' })
       const data = await res.json() as RevalidateResponse
       setLiveResults(data.results)
+
       if (data.ok && data.liveValidatedAt) {
         setLiveValidatedAt(data.liveValidatedAt)
       } else if (!data.ok) {
@@ -137,6 +151,18 @@ export function ValidatePanel({
       setTesting(false)
     }
   }
+
+  const handleCodeSave = useCallback(async (source: string) => {
+    await fetch(`/api/integrate/${integrationId}/source`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source }),
+    })
+  }, [integrationId])
+
+  const handleCodeReset = useCallback(async () => {
+    await fetch(`/api/integrate/${integrationId}/source`, { method: 'DELETE' })
+  }, [integrationId])
 
   const showCredentialSection = authMethod && authMethod !== 'none'
   const sandboxBuilding = validateStatus !== 'complete'
@@ -244,7 +270,14 @@ export function ValidatePanel({
 
       {/* Two-panel layout: code viewer + chat */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[3fr_2fr]">
-        <CodeViewer integrationId={integrationId} sourceCode={sourceCode} sandboxBuilding={sandboxBuilding} />
+        <CodeViewer
+          integrationId={integrationId}
+          sourceCode={sourceCode}
+          sandboxBuilding={sandboxBuilding}
+          editable={validateStatus === 'complete'}
+          onSave={handleCodeSave}
+          onReset={handleCodeReset}
+        />
         <ChatPanel integrationId={integrationId} sandboxUrl={sandboxUrl} validatedAt={validatedAt} sandboxBuilding={sandboxBuilding} />
       </div>
 

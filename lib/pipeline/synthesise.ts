@@ -1,6 +1,7 @@
 import { generateText, Output } from 'ai'
 import { synthesisModel, buildTags } from '../ai/gateway'
-import { SYNTHESIS_SYSTEM_PROMPT, buildSynthesisPrompt } from '../ai/synthesise-prompt'
+import { prompts } from '../prompts'
+import { buildSynthesisPrompt } from '../prompts/builders/synthesis'
 import { MCPServerConfigSchema, type MCPServerConfig } from '../mcp/types'
 import type { DiscoveryResult } from './discover'
 
@@ -16,12 +17,15 @@ export async function synthesiseTools(
   buildErrors?: string,
 ): Promise<MCPServerConfig> {
   let userPrompt = buildSynthesisPrompt(discovered)
+
   if (buildErrors) {
     userPrompt += `\n\nPREVIOUS SANDBOX BUILD ERRORS — fix these in the generated tool handlers:\n${buildErrors}`
   }
+
   let lastError: string | null = null
 
-  console.log(`[Synthesis] Starting for "${discovered.apiName}" (${discovered.endpointCount} endpoints)`)
+  const safeName = discovered.apiName.replace(/[\x00-\x1F\x7F]/g, '')
+  console.log(`[Synthesis] Starting for "${safeName}" (${discovered.endpointCount} endpoints)`)
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const prompt = lastError
@@ -29,12 +33,12 @@ export async function synthesiseTools(
       : userPrompt
 
     const tags = buildTags(discovered.apiName, 'synthesis', attempt > 0 ? `retry-${attempt}` : undefined)
-    console.log(`[Synthesis] Attempt ${attempt + 1}/${MAX_RETRIES + 1}`, { tags })
+    console.log(`[Synthesis] Attempt ${attempt + 1}/${MAX_RETRIES + 1} for "${safeName}"`, { tags })
 
     try {
       const { output } = await generateText({
         model: synthesisModel(),
-        system: SYNTHESIS_SYSTEM_PROMPT,
+        system: prompts.synthesis.systemPrompt,
         prompt,
         output: Output.object({ schema: MCPServerConfigSchema }),
         providerOptions: {
@@ -53,8 +57,9 @@ export async function synthesiseTools(
     } catch (err) {
       lastError = err instanceof Error ? err.message : 'Unknown error during synthesis'
       console.warn(`[Synthesis] Attempt ${attempt + 1}/${MAX_RETRIES + 1} failed:`, lastError)
+
       if (err instanceof Error && err.cause) {
-        console.warn(`[Synthesis] Cause:`, err.cause)
+        console.warn('[Synthesis] Cause:', err.cause)
       }
     }
   }

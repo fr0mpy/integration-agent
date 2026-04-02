@@ -29,6 +29,22 @@ export const MCPToolSchema = z.object({
     'HTTP path must not contain backticks, backslashes, template expressions, newlines, or null bytes.',
   ),
   authRequired: z.boolean(),
+  composedOf: z.array(z.object({
+    httpMethod: z.enum(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']),
+    // Same injection guard as the top-level httpPath — prevents code injection
+    // into generated template literals via composed sub-endpoint paths.
+    httpPath: z.string().startsWith('/').refine(
+      (p) =>
+        !p.includes('`') &&
+        !p.includes('${') &&
+        !p.includes('\\') &&
+        !p.includes('\n') &&
+        !p.includes('\r') &&
+        !p.includes('\0'),
+      'HTTP path must not contain backticks, backslashes, template expressions, newlines, or null bytes.',
+    ),
+    paramMapping: z.record(z.string()),
+  })).min(2).optional(),
 })
 
 export const MCPServerConfigSchema = z.object({

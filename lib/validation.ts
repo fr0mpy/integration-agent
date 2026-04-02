@@ -12,18 +12,21 @@ export function isValidUUID(id: string): boolean {
  */
 export async function validateSandboxUrl(url: string): Promise<void> {
   let hostname: string
+
   try {
     hostname = new URL(url).hostname
   } catch {
     throw new ValidationError('Invalid sandbox URL.')
   }
+
   const { address } = await lookup(hostname)
+
   if (isPrivateIP(address)) {
     throw new ValidationError('Sandbox URL resolves to a private/internal address.')
   }
 }
 
-const BLOCKED_IP_RANGES = [
+export const BLOCKED_IP_RANGES = [
   /^127\./, // loopback
   /^10\./, // 10.0.0.0/8
   /^172\.(1[6-9]|2\d|3[01])\./, // 172.16.0.0/12

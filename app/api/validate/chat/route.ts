@@ -2,11 +2,12 @@ import { convertToModelMessages, streamText, stepCountIs } from 'ai'
 import type { UIMessage } from 'ai'
 import { z } from 'zod'
 import { getIntegration } from '@/lib/storage/neon'
-import { configCache } from '@/lib/storage/redis'
+import { configCache, sourceOverride } from '@/lib/storage/redis'
 import { bundleServer } from '@/lib/mcp/bundle'
 import { validateSandboxUrl, ValidationError } from '@/lib/validation'
 import { errors } from '@/lib/api/response'
 import { chatModel } from '@/lib/ai/gateway'
+import { prompts, interpolate } from '@/lib/prompts'
 import type { MCPServerConfig } from '@/lib/mcp/types'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -15,17 +16,19 @@ export const maxDuration = 120
 
 const bodySchema = z.object({
   integrationId: z.string().uuid(),
-  sandboxUrl: z.string().url().startsWith('https://').optional(),
+  sandboxUrl: z.string().url().startsWith('https://').nullish(),
   messages: z.array(z.object({
     role: z.enum(['user', 'assistant', 'system']),
-    content: z.union([z.string().max(50_000), z.array(z.unknown())]),
-  }).passthrough()).max(100),
+    parts: z.array(z.record(z.unknown())).optional(),
+    content: z.union([z.string().max(50_000), z.array(z.unknown())]).optional(),
+  })).max(100),
 })
 
 export async function POST(req: Request) {
   try {
     const raw = await req.json()
     const parsed = bodySchema.safeParse(raw)
+
     if (!parsed.success) {
       return errors.badRequest('Invalid request.')
     }
@@ -42,42 +45,37 @@ export async function POST(req: Request) {
     }
 
     const integration = await getIntegration(integrationId)
+
     if (!integration) {
       return errors.notFound('Integration not found.')
     }
 
     const config = await configCache.get(integration.spec_hash) as MCPServerConfig | null
+
     if (!config) {
       return errors.notFound('Config not cached.')
     }
 
-    const { sourceCode } = bundleServer(config)
+    const { sourceCode: generatedSource } = bundleServer(config)
+    const override = await sourceOverride.get(integrationId)
+    const sourceCode = override ?? generatedSource
 
     const toolSummary = config.tools
       .map((t) => `- ${t.name}: ${t.description} [${t.httpMethod} ${t.httpPath}]`)
       .join('\n')
 
-    const system = `You are an expert assistant helping users understand and test a generated MCP (Model Context Protocol) server.
+    const callToolDescription = sandboxUrl
+      ? interpolate(prompts.chat.sections!.callToolWithSandbox, { sandboxUrl })
+      : prompts.chat.sections!.callToolWithoutSandbox
 
-This MCP server was auto-synthesized from an OpenAPI spec for: ${config.baseUrl}
-Auth method: ${config.authMethod}
-Total tools: ${config.tools.length}
-
-Available tools:
-${toolSummary}
-
-Generated source code (app/[transport]/route.ts):
-\`\`\`typescript
-${sourceCode}
-\`\`\`
-
-You have access to three tools:
-- listTools: List all available MCP tools with names and descriptions
-- readTool: Get the full definition of a specific tool (schema, HTTP mapping, auth)
-- callTool: ${sandboxUrl ? `Call a tool against the live sandbox at ${sandboxUrl}` : 'Not available — no sandbox URL (pipeline must complete first)'}
-
-When answering questions, use your tools to give precise, accurate answers rather than guessing from the source code alone.
-Show your reasoning clearly — explain WHY you're calling each tool before you call it.`
+    const system = interpolate(prompts.chat.systemPrompt, {
+      baseUrl: config.baseUrl,
+      authMethod: config.authMethod,
+      toolCount: String(config.tools.length),
+      toolSummary,
+      sourceCode,
+      callToolDescription,
+    })
 
     const result = streamText({
       model: chatModel(),
@@ -93,8 +91,8 @@ Show your reasoning clearly — explain WHY you're calling each tool before you 
             },
           }],
         },
-        { role: 'assistant', content: 'Ready.' },
-        ...await convertToModelMessages(messages as UIMessage[]),
+        { role: 'assistant', content: prompts.chat.sections!.assistantAck },
+        ...await convertToModelMessages(messages as unknown as UIMessage[]),
       ],
       stopWhen: stepCountIs(10),
       tools: {
@@ -120,9 +118,11 @@ Show your reasoning clearly — explain WHY you're calling each tool before you 
           }),
           execute: async ({ toolName }) => {
             const tool = config.tools.find((t) => t.name === toolName)
+
             if (!tool) {
               return { error: `Tool "${toolName}" not found. Available: ${config.tools.map((t) => t.name).join(', ')}` }
             }
+
             return {
               name: tool.name,
               title: tool.title,
@@ -147,6 +147,7 @@ Show your reasoning clearly — explain WHY you're calling each tool before you 
             }
 
             const validNames = config.tools.map((t) => t.name)
+
             if (!validNames.includes(toolName)) {
               return { error: `Tool "${toolName}" not found. Available: ${validNames.join(', ')}` }
             }

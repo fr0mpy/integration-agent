@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'crypto'
 import { getCredentials } from '@/lib/storage/neon'
 import { decrypt } from '@/lib/crypto'
 import { isValidUUID } from '@/lib/validation'
-import { success, errors } from '@/lib/api/response'
+import { errors } from '@/lib/api/response'
 
 /**
  * GET /api/credentials?integrationId=<uuid>
@@ -24,6 +24,7 @@ export async function GET(req: Request) {
   }
 
   const hmacSecret = process.env.CREDENTIAL_HMAC_SECRET
+
   if (!hmacSecret) {
     console.error('CREDENTIAL_HMAC_SECRET is not set')
     return errors.internal()
@@ -43,22 +44,33 @@ export async function GET(req: Request) {
   const expected = createHmac('sha256', hmacSecret).update(integrationId).digest('hex')
   const sigBuf = Buffer.from(signature, 'hex')
   const expBuf = Buffer.from(expected, 'hex')
+
   if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
     return errors.forbidden()
   }
 
   const encryptedValue = await getCredentials(integrationId)
+
   if (!encryptedValue) {
     return errors.notFound('No credentials found.')
   }
 
   try {
     const parsed = JSON.parse(decrypt(encryptedValue)) as { apiKey: string }
+
     if (!parsed.apiKey) {
       console.error('Decrypted credential is empty for integration', integrationId)
       return errors.internal()
     }
-    return success({ apiKey: parsed.apiKey })
+
+    return new Response(JSON.stringify({ apiKey: parsed.apiKey }), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+        'Pragma': 'no-cache',
+      },
+    })
   } catch {
     return errors.internal()
   }
