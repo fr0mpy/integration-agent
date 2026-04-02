@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { javascript } from '@codemirror/lang-javascript'
 import { json } from '@codemirror/lang-json'
@@ -11,6 +11,8 @@ interface BundledFile {
   file: string
   data: string
 }
+
+const ROUTE_FILE = 'app/[transport]/route.ts'
 
 interface CodeViewerProps {
   integrationId: string
@@ -23,10 +25,16 @@ interface CodeViewerProps {
   sourceCode?: string | null
   /** True while the sandbox is being built — defers the file fetch and shows skeleton */
   sandboxBuilding?: boolean
+  /** Allow editing route.ts (only when validation is complete) */
+  editable?: boolean
+  /** Persist edited source to the server */
+  onSave?: (source: string) => Promise<void>
+  /** Revert to generated source */
+  onReset?: () => Promise<void>
 }
 
 const FILE_ORDER = [
-  'app/[transport]/route.ts',
+  ROUTE_FILE,
   'package.json',
   'vercel.json',
   'next.config.ts',
@@ -43,11 +51,14 @@ function getExtensions(file: string) {
   return [javascript({ typescript: true })]
 }
 
-export function CodeViewer({ integrationId, sourceCode, sandboxBuilding }: CodeViewerProps) {
+export function CodeViewer({ integrationId, sourceCode, sandboxBuilding, editable, onSave, onReset }: CodeViewerProps) {
   const [files, setFiles] = useState<BundledFile[]>([])
   const [activeFile, setActiveFile] = useState(FILE_ORDER[0])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [editedSource, setEditedSource] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     // Stay in loading skeleton while the sandbox is still being built
@@ -56,6 +67,7 @@ export function CodeViewer({ integrationId, sourceCode, sandboxBuilding }: CodeV
     async function load() {
       setError(null)
       setLoading(true)
+
       try {
         const res = await fetch(`/api/integrate/${integrationId}/files`)
         if (!res.ok) throw new Error('Failed to load generated files')
@@ -70,21 +82,85 @@ export function CodeViewer({ integrationId, sourceCode, sandboxBuilding }: CodeV
         setLoading(false)
       }
     }
+
     load()
   }, [integrationId, sandboxBuilding])
 
-  // Override route.ts with live SSE data when available.
-  // If the files fetch hasn't completed yet (or raced and failed), synthesise a
-  // minimal entry so the viewer can render immediately without waiting for the API.
-  const displayFiles = sourceCode
-    ? files.length > 0
-      ? files.map((f) =>
-          f.file === 'app/[transport]/route.ts' ? { ...f, data: sourceCode } : f,
-        )
-      : [{ file: 'app/[transport]/route.ts', data: sourceCode }]
-    : files
+  // Clear local edits only when AI produces genuinely new code (not SSE replay)
+  const prevSourceCode = useRef(sourceCode)
+  useEffect(() => {
+    if (sourceCode && sourceCode !== prevSourceCode.current) {
+      setEditedSource(null)
+    }
+
+    prevSourceCode.current = sourceCode
+  }, [sourceCode])
+
+  // Auto-save edits after 1s of inactivity
+  const onSaveRef = useRef(onSave)
+  onSaveRef.current = onSave
+  useEffect(() => {
+    if (editedSource === null || !onSaveRef.current) return
+    const timer = setTimeout(() => {
+      onSaveRef.current?.(editedSource)
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [editedSource])
+
+  // Override route.ts with live SSE data (only before /files loads) or local edits
+  const displayFiles = useMemo(() => {
+    let result = files
+
+    if (sourceCode && files.length === 0) {
+      result = [{ file: ROUTE_FILE, data: sourceCode }]
+    }
+
+    if (editedSource !== null) {
+      result = result.map((f) =>
+        f.file === ROUTE_FILE ? { ...f, data: editedSource } : f,
+      )
+    }
+
+    return result
+  }, [files, sourceCode, editedSource])
 
   const activeContent = displayFiles.find((f) => f.file === activeFile)?.data ?? ''
+  const dirty = editedSource !== null
+  const isRouteFile = activeFile === ROUTE_FILE
+  const canEdit = editable && isRouteFile
+
+  const handleChange = useCallback((value: string) => {
+    setEditedSource(value)
+  }, [])
+
+  const handleSave = useCallback(async () => {
+    if (!editedSource || !onSave) return
+    setSaving(true)
+    setSaveError(null)
+
+    try {
+      await onSave(editedSource)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Save failed')
+    } finally {
+      setSaving(false)
+    }
+  }, [editedSource, onSave])
+
+  const handleReset = useCallback(async () => {
+    if (!onReset) return
+    setSaving(true)
+    setSaveError(null)
+
+    try {
+      await onReset()
+      setEditedSource(null)
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Reset failed')
+    } finally {
+      setSaving(false)
+    }
+  }, [onReset])
 
   if (loading) {
     return (
@@ -111,22 +187,50 @@ export function CodeViewer({ integrationId, sourceCode, sandboxBuilding }: CodeV
 
   return (
     <div className="flex h-[520px] flex-col overflow-hidden rounded-lg border border-border bg-zinc-950">
-      {/* File tabs */}
-      <div className="flex shrink-0 gap-0 overflow-x-auto border-b border-border bg-zinc-900 px-2 pt-1.5 scrollbar-none">
-        {displayFiles.map((f) => (
-          <button
-            key={f.file}
-            onClick={() => setActiveFile(f.file)}
-            className={cn(
-              'shrink-0 rounded-t px-3 py-1.5 font-mono text-xs transition-colors',
-              activeFile === f.file
-                ? 'bg-zinc-950 text-zinc-100'
-                : 'text-zinc-500 hover:text-zinc-300',
+      {/* File tabs + actions */}
+      <div className="flex shrink-0 items-center border-b border-border bg-zinc-900 px-2 pt-1.5">
+        <div className="flex flex-1 gap-0 overflow-x-auto scrollbar-none">
+          {displayFiles.map((f) => (
+            <button
+              key={f.file}
+              onClick={() => setActiveFile(f.file)}
+              className={cn(
+                'shrink-0 rounded-t px-3 py-1.5 font-mono text-xs transition-colors',
+                activeFile === f.file
+                  ? 'bg-zinc-950 text-zinc-100'
+                  : 'text-zinc-500 hover:text-zinc-300',
+              )}
+            >
+              {shortName(f.file)}
+              {f.file === ROUTE_FILE && dirty && (
+                <span className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-amber-400" />
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Save / Reset buttons */}
+        {editable && dirty && (
+          <div className="flex shrink-0 items-center gap-1.5 pb-1">
+            {saveError && (
+              <span className="text-[10px] text-red-400">{saveError}</span>
             )}
-          >
-            {shortName(f.file)}
-          </button>
-        ))}
+            <button
+              onClick={handleReset}
+              disabled={saving}
+              className="rounded px-2 py-1 text-[10px] font-medium text-zinc-400 hover:text-zinc-200 disabled:opacity-40"
+            >
+              Reset
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded bg-zinc-700 px-2.5 py-1 text-[10px] font-medium text-zinc-200 hover:bg-zinc-600 disabled:opacity-40"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Editor */}
@@ -135,12 +239,13 @@ export function CodeViewer({ integrationId, sourceCode, sandboxBuilding }: CodeV
           value={activeContent}
           theme={oneDark}
           extensions={getExtensions(activeFile)}
-          editable={false}
+          editable={canEdit}
+          onChange={canEdit ? handleChange : undefined}
           basicSetup={{
             lineNumbers: true,
             foldGutter: true,
-            highlightActiveLine: false,
-            highlightSelectionMatches: false,
+            highlightActiveLine: canEdit,
+            highlightSelectionMatches: canEdit,
           }}
           height="100%"
           style={{ fontSize: '12px' }}
