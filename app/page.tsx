@@ -8,7 +8,7 @@ import { RelativeTime } from '@/components/RelativeTime';
 
 async function getCachedIntegrations() {
   'use cache'
-  cacheLife('minutes')
+  cacheLife('hours')
   cacheTag('integrations')
   return listIntegrations(10)
 }

@@ -57,7 +57,7 @@ export async function POST(req: Request) {
         const integrationId = randomUUID()
         const cachedOk = await createIntegration(integrationId, specHash, specUrl)
         if (!cachedOk) return errors.internal()
-        revalidateTag('integrations', 'minutes')
+        revalidateTag('integrations', 'hours')
         return success({ integrationId, cached: true })
       }
     }
@@ -78,14 +78,14 @@ export async function POST(req: Request) {
         const integrationId = randomUUID()
         const cachedOk = await createIntegration(integrationId, specHash, specUrl)
         if (!cachedOk) return errors.internal()
-        revalidateTag('integrations', 'minutes')
+        revalidateTag('integrations', 'hours')
         return success({ integrationId, cached: true })
       }
 
       const integrationId = randomUUID()
       const created = await createIntegration(integrationId, specHash, specUrl)
       if (!created) return errors.internal()
-      revalidateTag('integrations', 'minutes')
+      revalidateTag('integrations', 'hours')
 
       // Start the durable workflow pipeline
       // URL cache is written inside the pipeline only after successful synthesis

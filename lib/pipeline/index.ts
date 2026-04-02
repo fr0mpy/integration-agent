@@ -168,7 +168,7 @@ async function failIntegration(integrationId: string) {
   const { updateIntegration, INTEGRATION_STATUS } =
     await import("../storage/neon");
   await updateIntegration(integrationId, { status: INTEGRATION_STATUS.FAILED });
-  revalidateTag('integrations', 'minutes');
+  revalidateTag('integrations', 'hours');
 }
 
 // Idempotently creates or retrieves the shared generated-mcps GitHub repo that all MCP servers are deployed from.
@@ -285,7 +285,7 @@ async function persistDeployment(
     github_pr_url: prResult.prUrl,
     github_repo_name: prResult.repoName,
   });
-  revalidateTag('integrations', 'minutes');
+  revalidateTag('integrations', 'hours');
 }
 
 // Runs deterministic + AI-assisted security checks on the generated config; blocks deploy if any check returns 'fail'.
