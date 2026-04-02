@@ -54,7 +54,7 @@ export function DeployPanel({
   // Determine which beat we're on
   const isLive = deployStatus === 'complete' || !!mcpUrl
   const isMerged = deployPrStatus === 'merged' || deployStep === 'merged' || deployStep === 'deploying' || deployStep === 'live'
-  const isPrOpen = !!prUrl && !isMerged && !isLive
+  const _isPrOpen = !!prUrl && !isMerged && !isLive
   const isBuilding = (deployStep === 'deploying' || deployBuildLog.length > 0) && !isLive
   const isWaiting = deployStep === 'await-merge' && !isMerged
 

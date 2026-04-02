@@ -66,6 +66,58 @@ describe('MCPToolSchema', () => {
     expect(result.success).toBe(false)
   })
 
+  it('accepts a valid tool with composedOf', () => {
+    const result = MCPToolSchema.safeParse({
+      ...validTool,
+      composedOf: [
+        { httpMethod: 'GET', httpPath: '/pets', paramMapping: {} },
+        { httpMethod: 'GET', httpPath: '/pets/{id}/tags', paramMapping: { petId: 'id' } },
+      ],
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects composedOf with fewer than 2 entries', () => {
+    const result = MCPToolSchema.safeParse({
+      ...validTool,
+      composedOf: [
+        { httpMethod: 'GET', httpPath: '/pets', paramMapping: {} },
+      ],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects composedOf with invalid httpMethod', () => {
+    const result = MCPToolSchema.safeParse({
+      ...validTool,
+      composedOf: [
+        { httpMethod: 'GET', httpPath: '/pets', paramMapping: {} },
+        { httpMethod: 'OPTIONS', httpPath: '/pets/{id}', paramMapping: {} },
+      ],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects composedOf entry missing paramMapping', () => {
+    const result = MCPToolSchema.safeParse({
+      ...validTool,
+      composedOf: [
+        { httpMethod: 'GET', httpPath: '/pets' },
+        { httpMethod: 'GET', httpPath: '/pets/{id}/tags' },
+      ],
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts tool without composedOf (optional field)', () => {
+    const result = MCPToolSchema.safeParse(validTool)
+    expect(result.success).toBe(true)
+
+    if (result.success) {
+      expect(result.data.composedOf).toBeUndefined()
+    }
+  })
+
   it('rejects property description shorter than 5 chars', () => {
     const result = MCPToolSchema.safeParse({
       ...validTool,
@@ -133,7 +185,7 @@ describe('MCPServerConfigSchema', () => {
   })
 
   it('allows optional authHeader', () => {
-    const { authHeader, ...withoutHeader } = validConfig
+    const { authHeader: _authHeader, ...withoutHeader } = validConfig
     const result = MCPServerConfigSchema.safeParse(withoutHeader)
     expect(result.success).toBe(true)
   })
