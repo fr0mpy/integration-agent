@@ -16,10 +16,10 @@ async function main() {
     console.error('DATABASE_URL not set — skipping Postgres')
   } else {
     const sql = neon(databaseUrl)
-    const { rowCount: creds } = await sql`DELETE FROM credentials`
-    console.log(`Deleted ${creds ?? 0} credential row(s)`)
-    const { rowCount: integrations } = await sql`DELETE FROM integrations`
-    console.log(`Deleted ${integrations ?? 0} integration row(s)`)
+    const credsResult = await sql`DELETE FROM credentials` as unknown as { rowCount: number }
+    console.log(`Deleted ${credsResult.rowCount ?? 0} credential row(s)`)
+    const intResult = await sql`DELETE FROM integrations` as unknown as { rowCount: number }
+    console.log(`Deleted ${intResult.rowCount ?? 0} integration row(s)`)
   }
 
   // --- Upstash Redis ---

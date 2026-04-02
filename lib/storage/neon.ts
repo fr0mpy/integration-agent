@@ -134,13 +134,13 @@ export async function listIntegrations(limit = 20): Promise<IntegrationSummary[]
 
   try {
     const sql = getDb()
-    const rows = await sql<IntegrationSummary[]>`
+    const rows = await sql`
       SELECT id, spec_url, status, run_id, created_at
       FROM integrations
       ORDER BY created_at DESC
       LIMIT ${limit}
     `
-    return rows
+    return rows as IntegrationSummary[]
   } catch (err) {
     console.error('Neon query failed (listIntegrations):', err instanceof Error ? err.message : 'unknown')
     return []

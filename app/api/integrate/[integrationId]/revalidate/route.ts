@@ -135,7 +135,8 @@ export async function POST(
 
       try {
         const result = await client.callTool({ name: tool.name, arguments: args })
-        const raw = result.content?.[0]
+        const contentArr = result.content as Array<{ type: string; text?: string }>
+        const raw = contentArr?.[0]
         const text = raw && 'text' in raw ? String(raw.text) : JSON.stringify(result.content)
 
         // Sniff HTTP status from the API response JSON if present
