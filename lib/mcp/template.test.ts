@@ -1,12 +1,13 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import type { MCPServerConfig } from './types'
 
 // Mock fs and path since template reads files from disk
 vi.mock('fs', () => ({
   readFileSync: vi.fn((filePath: string) => {
     if (String(filePath).includes('route.ts.tmpl')) {
-      return `import { createMcpHandler } from 'mcp-handler'\nconst handler = createMcpHandler((server) => {\n  // TOOLS_PLACEHOLDER\n})\nexport { handler as GET, handler as POST }`
+      return 'import { createMcpHandler } from \'mcp-handler\'\nconst handler = createMcpHandler((server) => {\n  // TOOLS_PLACEHOLDER\n})\nexport { handler as GET, handler as POST }'
     }
+
     return ''
   }),
 }))
@@ -50,7 +51,7 @@ describe('generateServerSource', () => {
     expect(source).not.toContain('// TOOLS_PLACEHOLDER')
 
     // Tool registration should be present
-    expect(source).toContain("server.tool(")
+    expect(source).toContain('server.tool(')
     expect(source).toContain('"list_customers"')
     expect(source).toContain('Lists all customers')
 
@@ -92,6 +93,55 @@ describe('generateServerSource', () => {
     // Path param should be interpolated with encodeURIComponent, not sent as query param
     expect(source).toContain('${encodeURIComponent(String(params.id))}')
     expect(source).not.toContain("_params.set('id'")
+  })
+
+  it('generates Promise.all for composed tools', async () => {
+    const { generateServerSource } = await import('./template')
+
+    const config: MCPServerConfig = {
+      tools: [
+        {
+          name: 'get_user_profile',
+          title: 'Get User Profile',
+          description: 'Gets a user with their roles in one call. Combines user and roles endpoints.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              userId: { type: 'string', description: 'The user ID to look up' },
+            },
+            required: ['userId'],
+          },
+          httpMethod: 'GET',
+          httpPath: '/users/{id}',
+          authRequired: true,
+          composedOf: [
+            { httpMethod: 'GET', httpPath: '/users/{id}', paramMapping: { userId: 'id' } },
+            { httpMethod: 'GET', httpPath: '/users/{id}/roles', paramMapping: { userId: 'id' } },
+          ],
+        },
+      ],
+      baseUrl: 'https://api.example.com',
+      authMethod: 'bearer',
+      authHeader: 'Authorization',
+    }
+
+    const source = generateServerSource(config)
+
+    // Should use Promise.all for parallel fetching
+    expect(source).toContain('Promise.all')
+
+    // Should have fetch calls for both sub-endpoints
+    expect(source).toContain('/users/')
+    expect(source).toContain('/roles')
+
+    // Should use encodeURIComponent for path params
+    expect(source).toContain('encodeURIComponent')
+
+    // Should merge results
+    expect(source).toContain('merged')
+
+    // Should include auth
+    expect(source).toContain('fetchCredentials')
   })
 
   it('generates JSON body for POST tools', async () => {

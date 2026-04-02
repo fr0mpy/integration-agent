@@ -116,4 +116,60 @@ describe('validateConfig', () => {
     const result = validateConfig(config, makeDiscovery())
     expect(result.valid).toBe(true)
   })
+
+  it('passes a valid composed tool', () => {
+    const config: MCPServerConfig = {
+      ...baseConfig,
+      tools: [
+        {
+          ...baseTool,
+          name: 'get_user_full',
+          composedOf: [
+            { httpMethod: 'GET', httpPath: '/users', paramMapping: {} },
+            { httpMethod: 'POST', httpPath: '/users', paramMapping: {} },
+          ],
+        },
+      ],
+    }
+    const result = validateConfig(config, makeDiscovery())
+    expect(result.valid).toBe(true)
+  })
+
+  it('catches composed sub-endpoint not in spec', () => {
+    const config: MCPServerConfig = {
+      ...baseConfig,
+      tools: [
+        {
+          ...baseTool,
+          name: 'get_user_full',
+          composedOf: [
+            { httpMethod: 'GET', httpPath: '/users', paramMapping: {} },
+            { httpMethod: 'GET', httpPath: '/users/{id}/roles', paramMapping: { userId: 'id' } },
+          ],
+        },
+      ],
+    }
+    const result = validateConfig(config, makeDiscovery())
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.message.includes('/users/{id}/roles'))).toBe(true)
+  })
+
+  it('catches composed paramMapping referencing unknown input param', () => {
+    const config: MCPServerConfig = {
+      ...baseConfig,
+      tools: [
+        {
+          ...baseTool,
+          name: 'get_user_full',
+          composedOf: [
+            { httpMethod: 'GET', httpPath: '/users', paramMapping: { nonExistentParam: 'id' } },
+            { httpMethod: 'POST', httpPath: '/users', paramMapping: {} },
+          ],
+        },
+      ],
+    }
+    const result = validateConfig(config, makeDiscovery())
+    expect(result.valid).toBe(false)
+    expect(result.errors.some((e) => e.message.includes('nonExistentParam'))).toBe(true)
+  })
 })
