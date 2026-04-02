@@ -191,68 +191,51 @@ export async function createVercelProject(
   return { vercelProjectId: projectId, setupLogs: logs }
 }
 
+export interface DeploymentInfo {
+  uid: string
+  readyState: string
+  url: string
+}
+
 /**
- * Wait for the first Vercel deployment on a project to reach READY or ERROR.
- * Separated from createVercelProject so WDK can retry the poll without re-creating the project.
+ * Single API call: check if a deployment exists on the project.
+ * Returns the most recent deployment or null if none queued yet.
  */
-export async function pollVercelDeployment(vercelProjectId: string): Promise<VercelDeployResult> {
+export async function findDeployment(vercelProjectId: string): Promise<DeploymentInfo | null> {
   const token = process.env.VERCEL_TOKEN
   if (!token) throw new Error('VERCEL_TOKEN is not set')
   const vercel = new Vercel({ bearerToken: token })
   const teamId = process.env.VERCEL_TEAM_ID
-  const logs: string[] = []
 
-  // Poll until Vercel queues the first deployment (can take several minutes for a new project)
-  logs.push('Waiting for Vercel to queue a deployment...')
-  const appearDeadline = Date.now() + DEPLOY_APPEAR_TIMEOUT_MS
-  let firstDeployments: Awaited<ReturnType<typeof vercel.deployments.getDeployments>>['deployments'] = []
+  const resp = await vercel.deployments.getDeployments({
+    projectId: vercelProjectId,
+    limit: 1,
+    ...(teamId ? { teamId } : {}),
+  })
 
-  while (firstDeployments.length === 0) {
-    if (Date.now() > appearDeadline) {
-      throw new Error('No deployment appeared within 5 minutes — check the Vercel dashboard.')
-    }
+  const dep = resp.deployments?.[0]
+  if (!dep) return null
 
-    await sleep(DEPLOY_POLL_INTERVAL_MS)
-    const resp = await vercel.deployments.getDeployments({
-      projectId: vercelProjectId,
-      limit: 1,
-      ...(teamId ? { teamId } : {}),
-    })
-    firstDeployments = resp.deployments ?? []
-  }
+  return { uid: dep.uid, readyState: dep.readyState ?? 'unknown', url: dep.url ?? '' }
+}
 
-  let dep = firstDeployments[0]
-  logs.push(`Deployment found: ${dep.uid} (state: ${dep.readyState ?? 'unknown'})`)
+/**
+ * Single API call: refresh the status of a specific deployment.
+ */
+export async function checkDeploymentStatus(deploymentUid: string): Promise<DeploymentInfo> {
+  const token = process.env.VERCEL_TOKEN
+  if (!token) throw new Error('VERCEL_TOKEN is not set')
+  const vercel = new Vercel({ bearerToken: token })
+  const teamId = process.env.VERCEL_TEAM_ID
 
-  const buildStart = Date.now()
-
-  while (dep.readyState !== 'READY' && dep.readyState !== 'ERROR') {
-    if (Date.now() - buildStart > VERCEL_BUILD_TIMEOUT_MS) {
-      throw new Error('Vercel deployment timed out after 10 minutes.')
-    }
-
-    await sleep(5_000)
-
-    const refreshed = await vercel.deployments.getDeployment({
-      idOrUrl: dep.uid,
-      ...(teamId ? { teamId } : {}),
-    })
-
-    const state = refreshed.readyState ?? 'BUILDING'
-    logs.push(`Building... (${state})`)
-    dep = { ...dep, readyState: state as typeof dep.readyState, url: refreshed.url ?? dep.url }
-  }
-
-  if (dep.readyState === 'ERROR') {
-    throw new Error('Vercel deployment failed — check the Vercel dashboard for build logs.')
-  }
-
-  logs.push('✓ Deployment READY')
+  const refreshed = await vercel.deployments.getDeployment({
+    idOrUrl: deploymentUid,
+    ...(teamId ? { teamId } : {}),
+  })
 
   return {
-    vercelProjectId,
-    deploymentId: dep.uid,
-    mcpUrl: `https://${dep.url}`,
-    buildLogs: logs,
+    uid: deploymentUid,
+    readyState: refreshed.readyState ?? 'BUILDING',
+    url: refreshed.url ?? '',
   }
 }

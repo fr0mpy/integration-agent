@@ -5,7 +5,7 @@ import type { DiscoveryResult } from './discover'
 import type { MCPServerConfig } from '../mcp/types'
 import type { SandboxResult } from './sandbox-check'
 import type { AuditResult } from './security-audit'
-import type { GitHubPRResult, MonorepoInfo, VercelDeployResult, VercelProjectResult } from './deploy'
+import type { GitHubPRResult, MonorepoInfo, VercelDeployResult, VercelProjectResult, DeploymentInfo } from './deploy'
 import { config as appConfig } from '../config'
 
 // WDK intercepts globalThis.fetch inside 'use step' / 'use workflow' functions and throws
@@ -163,10 +163,16 @@ async function runCreateVercelProject(
   return createVercelProject(monorepo, integrationId, integrationName)
 }
 
-async function runPollVercelDeployment(vercelProjectId: string): Promise<VercelDeployResult> {
+async function runFindDeployment(vercelProjectId: string): Promise<DeploymentInfo | null> {
   'use step'
-  const { pollVercelDeployment } = await import('./deploy')
-  return pollVercelDeployment(vercelProjectId)
+  const { findDeployment } = await import('./deploy')
+  return findDeployment(vercelProjectId)
+}
+
+async function runCheckDeploymentStatus(deploymentUid: string): Promise<DeploymentInfo> {
+  'use step'
+  const { checkDeploymentStatus } = await import('./deploy')
+  return checkDeploymentStatus(deploymentUid)
 }
 
 async function persistDeployment(
@@ -466,10 +472,50 @@ export async function synthesisePipeline(
       await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: line } satisfies DeployEventData))
     }
 
-    const vercelResult = await runPollVercelDeployment(projectResult.vercelProjectId)
+    // Poll for deployment to appear — emit progress events each iteration to keep SSE alive
+    await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: 'Waiting for Vercel to queue a deployment...' } satisfies DeployEventData))
+    const APPEAR_TIMEOUT_MS = 5 * 60 * 1000
+    const APPEAR_POLL_MS = 20_000
+    const appearDeadline = Date.now() + APPEAR_TIMEOUT_MS
+    let deployment: DeploymentInfo | null = null
 
-    for (const line of vercelResult.buildLogs) {
-      await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: line } satisfies DeployEventData))
+    while (!deployment) {
+      if (Date.now() > appearDeadline) {
+        throw new Error('No deployment appeared within 5 minutes — check the Vercel dashboard.')
+      }
+      await sleep(APPEAR_POLL_MS)
+      deployment = await runFindDeployment(projectResult.vercelProjectId)
+      if (!deployment) {
+        await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: 'Still waiting for deployment...' } satisfies DeployEventData))
+      }
+    }
+
+    await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: `Deployment found: ${deployment.uid} (state: ${deployment.readyState})` } satisfies DeployEventData))
+
+    // Poll until deployment reaches READY or ERROR — emit status each iteration
+    const BUILD_TIMEOUT_MS = 10 * 60 * 1000
+    const buildDeadline = Date.now() + BUILD_TIMEOUT_MS
+
+    while (deployment.readyState !== 'READY' && deployment.readyState !== 'ERROR') {
+      if (Date.now() > buildDeadline) {
+        throw new Error('Vercel deployment timed out after 10 minutes.')
+      }
+      await sleep(5_000)
+      deployment = await runCheckDeploymentStatus(deployment.uid)
+      await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: `Building... (${deployment.readyState})` } satisfies DeployEventData))
+    }
+
+    if (deployment.readyState === 'ERROR') {
+      throw new Error('Vercel deployment failed — check the Vercel dashboard for build logs.')
+    }
+
+    await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: '✓ Deployment READY' } satisfies DeployEventData))
+
+    const vercelResult: VercelDeployResult = {
+      vercelProjectId: projectResult.vercelProjectId,
+      deploymentId: deployment.uid,
+      mcpUrl: `https://${deployment.url}`,
+      buildLogs: [],
     }
 
     await persistDeployment(integrationId, prResult, vercelResult)
