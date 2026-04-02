@@ -126,6 +126,7 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
   const retriesRef = useRef(0)
   const receivedEventRef = useRef(false)
   const terminalRef = useRef(false)
+  const fallbackRef = useRef(false)
 
   const handleEvent = useCallback((event: PipelineEvent) => {
     receivedEventRef.current = true
@@ -316,11 +317,18 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
         retriesRef.current++
 
         if (retriesRef.current > config.sse.maxRetries) {
-          setState((prev) => ({
-            ...prev,
-            connected: false,
-            error: prev.error ?? 'Lost connection to pipeline stream.',
-          }))
+          setState((prev) => {
+            // If we're in the deploy stage, start DB fallback polling instead of giving up
+            if (prev.stageStatus['deploy-mcp'] === 'running') {
+              fallbackRef.current = true
+              return { ...prev, connected: false }
+            }
+            return {
+              ...prev,
+              connected: false,
+              error: prev.error ?? 'Lost connection to pipeline stream.',
+            }
+          })
           return
         }
 
@@ -338,6 +346,42 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
       if (timeoutId) clearTimeout(timeoutId)
     }
   }, [integrationId, cached, handleEvent])
+
+  // Fallback: poll DB for deployment status when SSE dies during deploy stage
+  useEffect(() => {
+    if (cached || !fallbackRef.current) return
+
+    const FALLBACK_POLL_MS = 10_000
+    const intervalId = setInterval(async () => {
+      if (!fallbackRef.current) {
+        clearInterval(intervalId)
+        return
+      }
+
+      try {
+        const res = await fetch(`/api/integrate/${integrationId}/status`)
+        if (!res.ok) return
+
+        const data = await res.json() as { status: string; mcp_url: string | null; deployment_id: string | null }
+        if (data.mcp_url) {
+          fallbackRef.current = false
+          clearInterval(intervalId)
+          setState((prev) => ({
+            ...prev,
+            stageStatus: { ...prev.stageStatus, 'deploy-mcp': 'complete' },
+            deployStep: 'live',
+            deployMcpUrl: data.mcp_url,
+            deploymentId: data.deployment_id,
+            error: null,
+          }))
+        }
+      } catch {
+        // Silently retry on next interval
+      }
+    }, FALLBACK_POLL_MS)
+
+    return () => clearInterval(intervalId)
+  }, [integrationId, cached, state.stageStatus])
 
   return state
 }
