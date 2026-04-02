@@ -1,12 +1,19 @@
 import Link from 'next/link';
+import { cacheLife } from 'next/cache';
 import { SpecInput } from '@/components/SpecInput';
 import { listIntegrations, type IntegrationSummary } from '@/lib/storage/neon';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { relativeTime } from '@/lib/ui/time';
+import { RelativeTime } from '@/components/RelativeTime';
+
+async function getCachedIntegrations() {
+  'use cache'
+  cacheLife('minutes')
+  return listIntegrations(10)
+}
 
 export default async function Home() {
-  const integrations = await listIntegrations(10);
+  const integrations = await getCachedIntegrations();
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-center px-4 py-16">
@@ -123,7 +130,7 @@ function IntegrationRow({ integration }: { integration: IntegrationSummary }) {
         </Link>
 
         <span className="shrink-0 text-xs text-muted-foreground">
-          {relativeTime(integration.created_at)}
+          <RelativeTime date={integration.created_at} />
         </span>
 
         <Badge

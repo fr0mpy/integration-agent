@@ -46,7 +46,6 @@ export default async function IntegrationPage({
         initialPrUrl={integration.github_pr_url ?? null}
         initialRepoUrl={integration.github_repo_url ?? null}
         initialMcpUrl={integration.mcp_url ?? null}
-        initialStatus={integration.status}
       />
     </main>
   )
