@@ -1,5 +1,3 @@
-'use client'
-
 import { cn } from '@/lib/utils'
 
 export type ToolState = 'input-streaming' | 'input-available' | 'output-available' | 'output-error'

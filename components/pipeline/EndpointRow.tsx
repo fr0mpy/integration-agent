@@ -1,5 +1,3 @@
-'use client'
-
 import { Badge } from '@/components/ui/badge'
 import { methodColors } from '@/lib/ui/badges'
 import { cn } from '@/lib/utils'

@@ -1,5 +1,3 @@
-'use client'
-
 import type { UIMessage } from 'ai'
 import { ReasoningBlock } from './ReasoningBlock'
 import { ChatToolCall } from './ChatToolCall'
