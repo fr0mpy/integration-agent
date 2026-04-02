@@ -1,16 +1,17 @@
 import { gateway } from '@ai-sdk/gateway'
+import { config } from '../config'
 
 export function synthesisModel() {
-  return gateway('anthropic/claude-haiku-4.5')
+  return gateway(config.models.synthesis)
 }
 
 export function chatModel() {
-  return gateway('anthropic/claude-sonnet-4.6')
+  return gateway(config.models.chat)
 }
 
 export function buildTags(
   integrationName: string,
-  stage: 'discover' | 'synthesis' | 'validation' | 'config-ui' | 'eval',
+  stage: 'discover' | 'synthesis' | 'validation' | 'config-ui' | 'eval' | 'audit',
   extra?: string
 ): string[] {
   const tags: string[] = [
