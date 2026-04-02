@@ -1,6 +1,6 @@
 import { generateText, Output } from 'ai'
 import { synthesisModel, buildTags } from '../ai/gateway'
-import { prompts } from '../prompts'
+import { prompts, buildSystemPrompt } from '../prompts'
 import { buildSynthesisPrompt } from '../prompts/builders/synthesis'
 import { MCPServerConfigSchema, type MCPServerConfig } from '../mcp/types'
 import type { DiscoveryResult } from './discover'
@@ -38,7 +38,7 @@ export async function synthesiseTools(
     try {
       const { output } = await generateText({
         model: synthesisModel(),
-        system: prompts.synthesis.systemPrompt,
+        system: buildSystemPrompt(prompts.synthesis),
         prompt,
         output: Output.object({ schema: MCPServerConfigSchema }),
         providerOptions: {

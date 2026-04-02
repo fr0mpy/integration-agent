@@ -3,8 +3,9 @@
   "name": "Endpoint Enrichment",
   "description": "Selects and enriches endpoints from large or incomplete OpenAPI specs",
   "model": "haiku",
-  "systemPrompt": "",
-  "sections": {
+  "version": "v2",
+  "sections": {},
+  "snippets": {
     "header": "API: {{apiName}}\nTotal endpoints: {{endpointCount}}",
     "selectInstruction": "Select the {{maxEndpoints}} most useful endpoints for an LLM tool-caller. Prioritise CRUD operations, common queries, and high-value actions. Exclude admin, bulk, and rarely-used endpoints.",
     "returnAllInstruction": "Return all endpoints.",

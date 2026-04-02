@@ -7,7 +7,7 @@ import { bundleServer } from '@/lib/mcp/bundle'
 import { validateSandboxUrl, ValidationError } from '@/lib/validation'
 import { errors } from '@/lib/api/response'
 import { chatModel } from '@/lib/ai/gateway'
-import { prompts, interpolate } from '@/lib/prompts'
+import { prompts, interpolate, buildSystemPrompt } from '@/lib/prompts'
 import type { MCPServerConfig } from '@/lib/mcp/types'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -65,10 +65,10 @@ export async function POST(req: Request) {
       .join('\n')
 
     const callToolDescription = sandboxUrl
-      ? interpolate(prompts.chat.sections!.callToolWithSandbox, { sandboxUrl })
-      : prompts.chat.sections!.callToolWithoutSandbox
+      ? interpolate(prompts.chat.snippets!.callToolWithSandbox, { sandboxUrl })
+      : prompts.chat.snippets!.callToolWithoutSandbox
 
-    const system = interpolate(prompts.chat.systemPrompt, {
+    const system = interpolate(buildSystemPrompt(prompts.chat), {
       baseUrl: config.baseUrl,
       authMethod: config.authMethod,
       toolCount: String(config.tools.length),
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
             },
           }],
         },
-        { role: 'assistant', content: prompts.chat.sections!.assistantAck },
+        { role: 'assistant', content: prompts.chat.snippets!.assistantAck },
         ...await convertToModelMessages(messages as unknown as UIMessage[]),
       ],
       stopWhen: stepCountIs(10),

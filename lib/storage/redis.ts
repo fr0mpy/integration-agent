@@ -1,5 +1,6 @@
 import { createHash } from 'crypto'
 import { Redis } from '@upstash/redis'
+import synthesisPrompt from '../prompts/synthesis.json'
 
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN
@@ -49,13 +50,13 @@ export const specUrlIndex = {
 export const mcpConfigCache = {
   // Reads a previously validated MCPServerConfig; a hit allows the pipeline to skip synthesis and sandbox entirely.
   get(specHash: string) {
-    return safeRedis('mcpConfigCache read', () => redis.get(`cache:${specHash}`))
+    return safeRedis('mcpConfigCache read', () => redis.get(`cache:${synthesisPrompt.version}:${specHash}`))
   },
 
   // Persists a validated config keyed by spec hash; only written after sandbox validation passes.
   set(specHash: string, config: unknown) {
     return safeRedis('mcpConfigCache write', () =>
-      redis.set(`cache:${specHash}`, config, { ex: CACHE_TTL_SECONDS }),
+      redis.set(`cache:${synthesisPrompt.version}:${specHash}`, config, { ex: CACHE_TTL_SECONDS }),
     )
   },
 }

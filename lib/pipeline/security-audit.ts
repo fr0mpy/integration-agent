@@ -2,7 +2,7 @@ import { generateText } from 'ai'
 import { z } from 'zod'
 import { stepCountIs } from 'ai'
 import { chatModel, buildTags } from '../ai/gateway'
-import { prompts } from '../prompts'
+import { prompts, buildSystemPrompt } from '../prompts'
 import { buildAuditPrompt } from '../prompts/builders/audit'
 import type { MCPServerConfig } from '../mcp/types'
 import type { DiscoveryResult } from './discover'
@@ -266,13 +266,13 @@ async function runAIAudit(
         role: 'user',
         content: [{
           type: 'text',
-          text: prompts.audit.systemPrompt,
+          text: buildSystemPrompt(prompts.audit),
           providerOptions: {
             anthropic: { cacheControl: { type: 'ephemeral' } },
           },
         }],
       },
-      { role: 'assistant', content: prompts.audit.sections!.assistantAck },
+      { role: 'assistant', content: prompts.audit.snippets!.assistantAck },
       { role: 'user', content: userPrompt },
     ],
     tools: {

@@ -111,14 +111,14 @@ export async function enrichDiscovery(
     summary: e.summary,
   }))
 
-  const sections = prompts.enrichment.sections!
-  const header = interpolate(sections.header, {
+  const snippets = prompts.enrichment.snippets!
+  const header = interpolate(snippets.header, {
     apiName: result.apiName,
     endpointCount: String(result.endpointCount),
   })
   const instruction = tooMany
-    ? interpolate(sections.selectInstruction, { maxEndpoints: String(MAX_ENDPOINTS) })
-    : sections.returnAllInstruction
+    ? interpolate(snippets.selectInstruction, { maxEndpoints: String(MAX_ENDPOINTS) })
+    : snippets.returnAllInstruction
 
   const prompt = [
     header,
@@ -128,7 +128,7 @@ export async function enrichDiscovery(
     '',
     'Instructions:',
     instruction,
-    sections.enrichRules,
+    snippets.enrichRules,
   ].join('\n')
 
   try {

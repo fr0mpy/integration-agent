@@ -3,6 +3,7 @@ export interface PromptDefinition {
   name: string
   description: string
   model: 'haiku' | 'sonnet'
-  systemPrompt: string
-  sections?: Record<string, string>
+  version: string
+  sections: Record<string, string>
+  snippets?: Record<string, string>
 }

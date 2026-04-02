@@ -94,6 +94,13 @@ async function loadSourceOverride(
   return sourceOverride.get(integrationId);
 }
 
+// Deletes the source override after it has been consumed; prevents stale edits from re-applying on future re-audit triggers.
+async function clearSourceOverride(integrationId: string): Promise<void> {
+  "use step";
+  const { sourceOverride } = await import("../storage/redis");
+  await sourceOverride.del(integrationId);
+}
+
 // Bundles the MCP config into deployable Next.js files; produces the file set written to the sandbox and later pushed to GitHub.
 async function runCodegen(config: MCPServerConfig): Promise<{
   files: Array<{ file: string; data: string }>;
@@ -121,16 +128,18 @@ async function cacheDiscovery(specHash: string, discovered: DiscoveryResult) {
   await discoveryCache.set(specHash, discovered);
 }
 
-// Writes validated MCP config + URL index to Redis after sandbox passes; AI output must be validated before caching.
-// specUrlIndex is written last — it acts as the commit signal for the fast path in the synthesise route.
-async function cacheSynthesisResults(
-  specHash: string,
-  specUrl: string,
-  config: MCPServerConfig,
-) {
+// Writes the full unfiltered MCP config to Redis before the build hook fires.
+// Stores all tools so cached config is never locked to a prior exclusion choice.
+async function cacheMcpConfig(specHash: string, config: MCPServerConfig) {
   "use step";
-  const { mcpConfigCache, specUrlIndex } = await import("../storage/redis");
+  const { mcpConfigCache } = await import("../storage/redis");
   await mcpConfigCache.set(specHash, config);
+}
+
+// Writes the URL→hash index after sandbox validation passes; acts as the commit signal for the fast path.
+async function commitSpecUrlIndex(specHash: string, specUrl: string) {
+  "use step";
+  const { specUrlIndex } = await import("../storage/redis");
   await specUrlIndex.setHash(specUrl, specHash);
 }
 
@@ -332,6 +341,9 @@ export async function synthesisePipeline(
 
     await emitEvent(createEvent("build-mcp", "complete", config));
 
+    // Cache full unfiltered config before build hook — exclusions are in-memory only, never persisted
+    await cacheMcpConfig(specHash, config);
+
     // ─── Pause: Wait for user to review tools and trigger build ───────────────
     await emitEvent(createEvent("build-mcp", "awaiting-trigger"));
 
@@ -452,7 +464,7 @@ export async function synthesisePipeline(
     await persistValidation(integrationId, sandboxResult);
 
     // Cache results only after validation passes
-    await cacheSynthesisResults(specHash, specUrl, config);
+    await commitSpecUrlIndex(specHash, specUrl);
 
     await emitEvent(createEvent("preview-mcp", "done"));
 
@@ -477,6 +489,8 @@ export async function synthesisePipeline(
               : f,
           ),
         };
+        // Clear override after consuming — prevents stale edits on future re-audit triggers
+        await clearSourceOverride(integrationId);
       }
 
       // ─── Stage 3.5: Security Audit ─────────────────────────────────────────

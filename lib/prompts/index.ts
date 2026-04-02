@@ -13,6 +13,13 @@ export const prompts = {
 
 export { type PromptDefinition } from './types'
 
+// Assembles a prompt's sections into a system prompt string using XML tags.
+export function buildSystemPrompt(prompt: PromptDefinition): string {
+  return Object.entries(prompt.sections)
+    .map(([key, content]) => `<${key}>\n${content}\n</${key}>`)
+    .join('\n\n')
+}
+
 // Replaces {{key}} placeholders in a prompt template string with values from the vars map.
 export function interpolate(
   template: string,
