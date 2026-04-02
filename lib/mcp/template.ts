@@ -35,10 +35,14 @@ function generateToolRegistration(tool: MCPToolDefinition): string {
 
 // Converts a tool's inputSchema into Zod property declarations, marking optional fields and attaching descriptions.
 function generateZodSchema(tool: MCPToolDefinition): string {
+  const SAFE_IDENT = /^[a-zA-Z_$][a-zA-Z0-9_$]*$/
   const required = new Set(tool.inputSchema.required)
   const lines: string[] = []
 
   for (const [name, prop] of Object.entries(tool.inputSchema.properties)) {
+    if (!SAFE_IDENT.test(name)) {
+      throw new Error(`Unsafe inputSchema property name: ${name}`)
+    }
     const base = zodType(prop.type)
     const withDesc = `${base}.describe(${JSON.stringify(prop.description)})`
     const final = required.has(name) ? withDesc : `${withDesc}.optional()`
@@ -64,6 +68,12 @@ function generateHandler(tool: MCPToolDefinition): string {
   const { httpMethod, httpPath, authRequired } = tool
   const paramNames = Object.keys(tool.inputSchema.properties)
   const required = new Set(tool.inputSchema.required)
+
+  // Validate full httpPath to prevent template injection via backticks or ${...}
+  const SAFE_PATH = /^[a-zA-Z0-9/_{}.\-]+$/
+  if (!SAFE_PATH.test(httpPath)) {
+    throw new Error(`Unsafe httpPath: ${httpPath}`)
+  }
 
   // Detect path params: /users/{id} → ['id']
   const pathParams = (httpPath.match(/\{([^}]+)\}/g) ?? []).map((s) => s.slice(1, -1))
@@ -136,8 +146,14 @@ function generateHandler(tool: MCPToolDefinition): string {
     fetchOpts.push('body')
   }
 
-  lines.push(`      const res = await fetch(url, { ${fetchOpts.join(', ')} })`)
-  lines.push('      const data = await res.json()')
+  lines.push('      let data: unknown')
+  lines.push('      try {')
+  lines.push(`        const res = await fetch(url, { ${fetchOpts.join(', ')} })`)
+  lines.push('        if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`)')
+  lines.push('        data = await res.json()')
+  lines.push('      } catch (err) {')
+  lines.push('        return { isError: true, content: [{ type: \'text\', text: err instanceof Error ? err.message : String(err) }] }')
+  lines.push('      }')
   lines.push('      return { content: [{ type: \'text\', text: JSON.stringify(data) }] }')
 
   return lines.join('\n')
@@ -167,7 +183,12 @@ function generateComposedHandler(tool: MCPToolDefinition): string {
   const resultKeys: string[] = []
 
   for (const sub of composedOf) {
-    // Validate path param names
+    // Validate full httpPath and path param names
+    const SAFE_PATH = /^[a-zA-Z0-9/_{}.\-]+$/
+    if (!SAFE_PATH.test(sub.httpPath)) {
+      throw new Error(`Unsafe httpPath in composed sub-endpoint: ${sub.httpPath}`)
+    }
+
     const pathParams = (sub.httpPath.match(/\{([^}]+)\}/g) ?? []).map((s) => s.slice(1, -1))
 
     for (const p of pathParams) {
@@ -196,7 +217,7 @@ function generateComposedHandler(tool: MCPToolDefinition): string {
       fetchOpts.push('headers: { \'Authorization\': `Bearer ${creds.apiKey}` }')
     }
 
-    fetchExprs.push(`fetch(${urlExpr}, { ${fetchOpts.join(', ')} }).then(r => r.json())`)
+    fetchExprs.push(`fetch(${urlExpr}, { ${fetchOpts.join(', ')} }).then(r => r.ok ? r.json() : Promise.reject(new Error(\`HTTP \${r.status} \${r.statusText}\`)))`)
 
     // Derive a result key from the last meaningful path segment
     const segments = sub.httpPath.split('/').filter(Boolean)
@@ -221,14 +242,19 @@ function generateComposedHandler(tool: MCPToolDefinition): string {
     }
   }
 
-  lines.push(`      const [${dedupedKeys.join(', ')}] = await Promise.all([`)
+  lines.push('      let merged: unknown')
+  lines.push('      try {')
+  lines.push(`        const [${dedupedKeys.join(', ')}] = await Promise.all([`)
 
   for (const expr of fetchExprs) {
-    lines.push(`        ${expr},`)
+    lines.push(`          ${expr},`)
   }
 
-  lines.push('      ])')
-  lines.push(`      const merged = { ${dedupedKeys.map((k) => `${JSON.stringify(k)}: ${k}`).join(', ')} }`)
+  lines.push('        ])')
+  lines.push(`        merged = { ${dedupedKeys.map((k) => `${JSON.stringify(k)}: ${k}`).join(', ')} }`)
+  lines.push('      } catch (err) {')
+  lines.push('        return { isError: true, content: [{ type: \'text\', text: err instanceof Error ? err.message : String(err) }] }')
+  lines.push('      }')
   lines.push('      return { content: [{ type: \'text\', text: JSON.stringify(merged) }] }')
 
   return lines.join('\n')

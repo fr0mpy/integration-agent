@@ -4,7 +4,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { getIntegration, updateIntegration } from '@/lib/storage/neon'
 import { mcpConfigCache, sourceOverride } from '@/lib/storage/redis'
 import { bundleServer } from '@/lib/mcp/bundle'
-import { isValidUUID } from '@/lib/validation'
+import { isValidUUID, validateSandboxUrl, ValidationError } from '@/lib/validation'
 import { success, errors } from '@/lib/api/response'
 import type { MCPServerConfig } from '@/lib/mcp/types'
 
@@ -44,6 +44,12 @@ export async function POST(
   // Check if existing sandbox is still alive
   if (integration.sandbox_url) {
     try {
+      await validateSandboxUrl(integration.sandbox_url as string)
+    } catch (err) {
+      return errors.badRequest(err instanceof ValidationError ? err.message : 'Invalid sandbox URL.')
+    }
+
+    try {
       const client = new Client({ name: 'integration-agent-health', version: '1.0.0' })
       const transport = new StreamableHTTPClientTransport(new URL(`${integration.sandbox_url}/mcp`))
       await client.connect(transport)
@@ -61,9 +67,16 @@ export async function POST(
 
   // Regenerate bundle from cached config (with any source overrides)
   const override = await sourceOverride.get(integrationId)
+  const baseBundle = bundleServer(config)
   const bundle = override
-    ? { ...bundleServer(config), sourceCode: override }
-    : bundleServer(config)
+    ? {
+        ...baseBundle,
+        sourceCode: override,
+        files: baseBundle.files.map((f) =>
+          f.file === 'app/[transport]/route.ts' ? { ...f, data: override } : f,
+        ),
+      }
+    : baseBundle
 
   // Stream ndjson progress
   const encoder = new TextEncoder()
