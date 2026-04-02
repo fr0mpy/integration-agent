@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { PipelineEvent, PipelineStage, ValidateEventData, DeployEventData } from '@/lib/pipeline/events'
+import type { PipelineEvent, PipelineStage, ValidateEventData, DeployEventData, AuditEventData, AuditFinding } from '@/lib/pipeline/events'
 import type { DiscoveryResult } from '@/lib/pipeline/discover'
 import type { MCPToolDefinition, MCPServerConfig } from '@/lib/mcp/types'
+import { config } from '@/lib/config'
 
 export interface PipelineState {
   currentStage: PipelineStage | null
@@ -25,6 +26,13 @@ export interface PipelineState {
   sandboxUrl: string | null
   error: string | null
   connected: boolean
+  // audit-mcp stage
+  auditFindings: AuditFinding[]
+  auditSummary: { pass: number; warn: number; fail: number } | null
+  auditBlocked: boolean
+  // manual trigger gates
+  awaitingBuildTrigger: boolean
+  awaitingAuditTrigger: boolean
   // deploy-mcp stage
   deployStep: DeployEventData['step'] | null
   deployPrUrl: string | null
@@ -42,12 +50,10 @@ const INITIAL_STAGE_STATUS: PipelineState['stageStatus'] = {
   'discover-api': 'pending',
   'build-mcp': 'pending',
   'preview-mcp': 'pending',
+  'audit-mcp': 'pending',
   'deploy-mcp': 'pending',
-  'health-check': 'pending',
 }
 
-const MAX_RETRIES = 3
-const CONNECTION_TIMEOUT_MS = 15_000
 
 export function usePipeline(integrationId: string, cached = false): PipelineState {
   const [state, setState] = useState<PipelineState>({
@@ -64,6 +70,11 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
     sandboxUrl: null,
     error: null,
     connected: false,
+    auditFindings: [],
+    auditSummary: null,
+    auditBlocked: false,
+    awaitingBuildTrigger: false,
+    awaitingAuditTrigger: false,
     deployStep: null,
     deployPrUrl: null,
     deployPrTitle: null,
@@ -122,9 +133,33 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
       const next = { ...prev }
       next.stageStatus = { ...prev.stageStatus }
 
-      if (event.status === 'running') {
+      if (event.status === 'awaiting-trigger') {
+        // Pipeline paused — signal UI to show the appropriate trigger button
+        // Reset terminal flag so SSE reconnects while waiting for re-trigger
+        terminalRef.current = false
+
+        if (event.stage === 'build-mcp') {
+          next.awaitingBuildTrigger = true
+        } else {
+          next.awaitingAuditTrigger = true
+        }
+      } else if (event.status === 'running') {
         next.currentStage = event.stage
         next.stageStatus[event.stage] = 'running'
+
+        // Clear awaiting flags when next stage starts
+        if (event.stage === 'preview-mcp') {
+          next.awaitingBuildTrigger = false
+        }
+
+        if (event.stage === 'audit-mcp') {
+          next.awaitingAuditTrigger = false
+          // Clear previous audit results so UI resets on re-run
+          next.auditFindings = []
+          next.auditSummary = null
+          next.auditBlocked = false
+          next.error = null
+        }
 
         // preview-mcp 'running' event carries the generated source code
         if (event.stage === 'preview-mcp' && event.data) {
@@ -148,6 +183,7 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
           const d = event.data as ValidateEventData
           if (d.buildLog) next.buildLog = [...prev.buildLog, d.buildLog]
         }
+
         if (event.stage === 'deploy-mcp' && event.data) {
           const d = event.data as DeployEventData
           if (d.buildLog) next.deployBuildLog = [...prev.deployBuildLog, d.buildLog]
@@ -163,6 +199,10 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
           const d = event.data as ValidateEventData
           if (d.verifiedTools) next.verifiedTools = d.verifiedTools
           if (d.sandboxUrl) next.sandboxUrl = d.sandboxUrl
+        } else if (event.stage === 'audit-mcp' && event.data) {
+          const d = event.data as AuditEventData
+          if (d.summary) next.auditSummary = d.summary
+          if (d.blocked) next.auditBlocked = true
         } else if (event.stage === 'deploy-mcp' && event.data) {
           const d = event.data as DeployEventData
           if (d.step !== undefined) next.deployStep = d.step
@@ -170,6 +210,12 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
           if (d.deploymentId) next.deploymentId = d.deploymentId
           if (d.prUrl) next.deployPrUrl = d.prUrl
           if (d.repoUrl) next.deployRepoUrl = d.repoUrl
+        }
+      } else if (event.status === 'finding' && event.stage === 'audit-mcp' && event.data) {
+        const d = event.data as AuditEventData
+
+        if (d.finding) {
+          next.auditFindings = [...prev.auditFindings, d.finding]
         }
       } else if (event.status === 'tool_complete' && event.data) {
         next.tools = [...prev.tools, event.data as MCPToolDefinition]
@@ -184,9 +230,20 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
         terminalRef.current = true
       } else if (event.status === 'failed') {
         next.stageStatus[event.stage] = 'failed'
+
+        if (event.stage === 'audit-mcp' && event.data) {
+          const d = event.data as AuditEventData
+          if (d.summary) next.auditSummary = d.summary
+          next.auditBlocked = true
+        }
+
         const errorData = event.data as { error?: string; errors?: string } | null
         next.error = errorData?.error ?? errorData?.errors ?? 'Pipeline failed'
-        terminalRef.current = true
+
+        // Audit failures aren't terminal — the workflow stays alive for re-triggers
+        if (event.stage !== 'audit-mcp') {
+          terminalRef.current = true
+        }
       }
 
       return next
@@ -215,7 +272,7 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
             error: 'Pipeline connection timed out. The workflow may not have started.',
           }))
         }
-      }, CONNECTION_TIMEOUT_MS)
+      }, config.sse.connectionTimeoutMs)
 
       eventSource.onopen = () => {
         setState((prev) => ({ ...prev, connected: true }))
@@ -245,6 +302,7 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
 
       eventSource.onerror = () => {
         eventSource?.close()
+
         if (timeoutId) {
           clearTimeout(timeoutId)
           timeoutId = null
@@ -257,7 +315,7 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
 
         retriesRef.current++
 
-        if (retriesRef.current > MAX_RETRIES) {
+        if (retriesRef.current > config.sse.maxRetries) {
           setState((prev) => ({
             ...prev,
             connected: false,

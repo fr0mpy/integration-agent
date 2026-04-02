@@ -1,7 +1,7 @@
 import type { DiscoveryResult } from './discover'
 import type { MCPServerConfig, MCPToolDefinition } from '../mcp/types'
 
-export type PipelineStage = 'discover-api' | 'build-mcp' | 'preview-mcp' | 'deploy-mcp' | 'health-check'
+export type PipelineStage = 'discover-api' | 'build-mcp' | 'preview-mcp' | 'audit-mcp' | 'deploy-mcp'
 
 export type PipelineStatus =
   | 'running'
@@ -11,6 +11,8 @@ export type PipelineStatus =
   | 'building'
   | 'done'
   | 'retrying'
+  | 'finding'
+  | 'awaiting-trigger'
 
 export interface ValidateEventData {
   sourceCode?: string
@@ -37,6 +39,23 @@ export interface DeployEventData {
   error?: string
 }
 
+export type AuditSeverity = 'pass' | 'warn' | 'fail'
+
+export interface AuditFinding {
+  checkId: string
+  title: string
+  severity: AuditSeverity
+  description: string
+  /** Affected tool names — empty array for config-level findings */
+  tools: string[]
+}
+
+export interface AuditEventData {
+  finding?: AuditFinding
+  summary?: { pass: number; warn: number; fail: number }
+  blocked?: boolean
+}
+
 export interface PipelineEvent {
   stage: PipelineStage
   status: PipelineStatus
@@ -46,6 +65,7 @@ export interface PipelineEvent {
     | MCPToolDefinition
     | ValidateEventData
     | DeployEventData
+    | AuditEventData
     | { error: string }
     | null
   timestamp: number

@@ -1,0 +1,21 @@
+import type { PromptDefinition } from './types'
+import synthesisPrompt from './synthesis.json'
+import auditPrompt from './audit.json'
+import chatPrompt from './chat.json'
+import enrichmentPrompt from './enrichment.json'
+
+export const prompts = {
+  synthesis: synthesisPrompt as PromptDefinition,
+  audit: auditPrompt as PromptDefinition,
+  chat: chatPrompt as PromptDefinition,
+  enrichment: enrichmentPrompt as PromptDefinition,
+} as const
+
+export { type PromptDefinition } from './types'
+
+export function interpolate(
+  template: string,
+  vars: Record<string, string>,
+): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? '')
+}

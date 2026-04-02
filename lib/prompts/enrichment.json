@@ -1,0 +1,13 @@
+{
+  "id": "enrichment",
+  "name": "Endpoint Enrichment",
+  "description": "Selects and enriches endpoints from large or incomplete OpenAPI specs",
+  "model": "haiku",
+  "systemPrompt": "",
+  "sections": {
+    "header": "API: {{apiName}}\nTotal endpoints: {{endpointCount}}",
+    "selectInstruction": "Select the {{maxEndpoints}} most useful endpoints for an LLM tool-caller. Prioritise CRUD operations, common queries, and high-value actions. Exclude admin, bulk, and rarely-used endpoints.",
+    "returnAllInstruction": "Return all endpoints.",
+    "enrichRules": "For every endpoint:\n- If operationId is null, generate a clean camelCase name from the method and path (e.g. GET /users/{id} → getUserById).\n- If the summary is shorter than 10 characters or empty, write a clear one-line summary describing what the endpoint does.\n- Keep existing operationIds and summaries that are already good."
+  }
+}

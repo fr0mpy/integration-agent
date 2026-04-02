@@ -1,10 +1,12 @@
-import { getWritable, createWebhook, sleep, fetch as wfFetch } from 'workflow'
+import { getWritable, createWebhook, createHook, sleep, fetch as wfFetch } from 'workflow'
 import { neonConfig } from '@neondatabase/serverless'
-import { createEvent, type PipelineEvent, type ValidateEventData, type DeployEventData } from './events'
+import { createEvent, type PipelineEvent, type ValidateEventData, type DeployEventData, type AuditEventData } from './events'
 import type { DiscoveryResult } from './discover'
 import type { MCPServerConfig } from '../mcp/types'
 import type { SandboxResult } from './sandbox-check'
+import type { AuditResult } from './security-audit'
 import type { GitHubPRResult, MonorepoInfo, VercelDeployResult, VercelProjectResult } from './deploy'
+import { config as appConfig } from '../config'
 
 // WDK intercepts globalThis.fetch inside 'use step' / 'use workflow' functions and throws
 // if code tries to use it directly. Fix: configure Neon to use WDK's fetch, the officially
@@ -51,6 +53,12 @@ async function runSynthesisWithBuildErrors(
   'use step'
   const { synthesiseTools } = await import('./synthesise')
   return synthesiseTools(discovered, buildErrors)
+}
+
+async function loadSourceOverride(integrationId: string): Promise<string | null> {
+  'use step'
+  const { sourceOverride } = await import('../storage/redis')
+  return sourceOverride.get(integrationId)
 }
 
 async function runCodegen(config: MCPServerConfig): Promise<{ files: Array<{ file: string; data: string }>; sourceCode: string }> {
@@ -178,9 +186,19 @@ async function persistDeployment(
   })
 }
 
+async function runSecurityAudit(
+  config: MCPServerConfig,
+  discovered: DiscoveryResult,
+  sourceCode: string,
+): Promise<AuditResult> {
+  'use step'
+  const { performSecurityAudit } = await import('./security-audit')
+  return performSecurityAudit(config, discovered, sourceCode)
+}
+
 /**
  * Durable synthesis pipeline.
- * Stages: Discover → Synthesise → Validate (live MCP test) → Deploy
+ * Stages: Discover → Synthesise → Validate (live MCP test) → Audit → Deploy
  */
 export async function synthesisePipeline(
   integrationId: string,
@@ -191,7 +209,7 @@ export async function synthesisePipeline(
   'use workflow'
 
   // Track which stage is active so the catch block emits the correct failed event
-  let currentStage: 'discover-api' | 'build-mcp' | 'preview-mcp' | 'deploy-mcp' = 'discover-api'
+  let currentStage: 'discover-api' | 'build-mcp' | 'preview-mcp' | 'audit-mcp' | 'deploy-mcp' = 'discover-api'
 
   try {
     // Stage 1: Discovery + Enrichment
@@ -211,11 +229,30 @@ export async function synthesisePipeline(
     for (const tool of config.tools) {
       await emitEvent(createEvent('build-mcp', 'tool_complete', tool))
     }
+
     await emitEvent(createEvent('build-mcp', 'complete', config))
+
+    // ─── Pause: Wait for user to review tools and trigger build ───────────────
+    await emitEvent(createEvent('build-mcp', 'awaiting-trigger'))
+
+    using buildHook = createHook<{ excludedTools: string[] }>({
+      token: `build-trigger:${integrationId}`,
+    })
+    const buildPayload = await buildHook
+
+    // Filter out tools the user toggled off
+    if (buildPayload.excludedTools.length > 0) {
+      const excluded = new Set(buildPayload.excludedTools)
+      config = {
+        ...config,
+        tools: config.tools.filter((t) => !excluded.has(t.name)),
+      }
+    }
 
     // Silent structural pre-flight — not a visible stage
     const { validateConfig } = await import('./validate')
     const structural = validateConfig(config, discovered)
+
     if (!structural.valid) {
       const errorMsg = structural.errors.map((e) => `${e.tool}: ${e.message}`).join('; ')
       await emitEvent(createEvent('preview-mcp', 'failed', { errors: errorMsg } satisfies ValidateEventData))
@@ -233,6 +270,7 @@ export async function synthesisePipeline(
     await setIntegrationStatus(integrationId, 'validating')
 
     let sandboxResult = await runValidateSandbox(bundle, config)
+
     for (const log of sandboxResult.buildLogs) {
       await emitEvent(createEvent('preview-mcp', 'building', { buildLog: log } satisfies ValidateEventData))
     }
@@ -247,6 +285,7 @@ export async function synthesisePipeline(
       for (const tool of config.tools) {
         await emitEvent(createEvent('build-mcp', 'tool_complete', tool))
       }
+
       await emitEvent(createEvent('build-mcp', 'complete', config))
 
       currentStage = 'preview-mcp'
@@ -254,6 +293,7 @@ export async function synthesisePipeline(
       await emitEvent(createEvent('preview-mcp', 'running', { sourceCode: bundle.sourceCode } satisfies ValidateEventData))
 
       sandboxResult = await runValidateSandbox(bundle, config)
+
       for (const log of sandboxResult.buildLogs) {
         await emitEvent(createEvent('preview-mcp', 'building', { buildLog: log } satisfies ValidateEventData))
       }
@@ -280,6 +320,49 @@ export async function synthesisePipeline(
     await cacheResults(specHash, specUrl, config, discovered)
 
     await emitEvent(createEvent('preview-mcp', 'done'))
+
+    // ─── Pause: Wait for manual trigger (iterable — allows re-runs) ─────────
+    await emitEvent(createEvent('audit-mcp', 'awaiting-trigger'))
+
+    using auditHook = createHook<{ triggered: boolean }>({
+      token: `audit-trigger:${integrationId}`,
+    })
+
+    for await (const _trigger of auditHook) {
+      // Apply user edits (if any) before each audit run
+      const editedSource = await loadSourceOverride(integrationId)
+
+      if (editedSource) {
+        bundle = {
+          ...bundle,
+          sourceCode: editedSource,
+          files: bundle.files.map(f =>
+            f.file === 'app/[transport]/route.ts' ? { ...f, data: editedSource } : f
+          ),
+        }
+      }
+
+      // ─── Stage 3.5: Security Audit ─────────────────────────────────────────
+      currentStage = 'audit-mcp'
+      await emitEvent(createEvent('audit-mcp', 'running'))
+
+      const auditResult = await runSecurityAudit(config, discovered, bundle.sourceCode)
+
+      for (const auditFinding of auditResult.findings) {
+        await emitEvent(createEvent('audit-mcp', 'finding', { finding: auditFinding } satisfies AuditEventData))
+      }
+
+      const auditStatus = auditResult.passed ? 'complete' : 'failed'
+      await emitEvent(createEvent('audit-mcp', auditStatus, {
+        summary: auditResult.summary,
+        blocked: !auditResult.passed,
+      } satisfies AuditEventData))
+
+      if (auditResult.passed) break
+
+      // Audit failed — wait for user to re-trigger
+      await emitEvent(createEvent('audit-mcp', 'awaiting-trigger'))
+    }
 
     // ─── Stage 4: Deploy MCP ─────────────────────────────────────────────────
     currentStage = 'deploy-mcp'
@@ -318,36 +401,42 @@ export async function synthesisePipeline(
     // Wait for the PR to be merged.
     // In prod: suspend durably via GitHub webhook (event-driven).
     // In dev: GitHub rejects localhost webhook URLs, so poll the API every 30s instead.
-    const isLocalDev =
-      prWebhook.url.startsWith('http://localhost') || prWebhook.url.startsWith('http://127.')
+    const isLocalDev = appConfig.deploy.localUrlPrefixes.some((p) => prWebhook.url.startsWith(p))
 
     let mergeResult = { merged: false, closedWithoutMerge: false }
 
     if (isLocalDev) {
       const POLL_DEADLINE_MS = 24 * 60 * 60 * 1000
       const pollStart = Date.now()
+
       while (Date.now() - pollStart < POLL_DEADLINE_MS) {
         const prStatus = await checkPRStatus(prResult.repoOwner, prResult.repoName, prResult.prNumber)
+
         if (prStatus.state === 'closed') {
           mergeResult = { merged: prStatus.merged, closedWithoutMerge: !prStatus.merged }
           break
         }
+
         await sleep('30s')
       }
     } else {
       type GHPREvent = { action?: string; pull_request?: { number: number; merged: boolean } }
+
       for await (const ghRequest of prWebhook) {
         const body = await ghRequest.json() as GHPREvent
         if (body.pull_request?.number !== prResult.prNumber) continue
+
         if (body.action === 'closed' && body.pull_request?.merged === true) {
           mergeResult = { merged: true, closedWithoutMerge: false }
           break
         }
+
         if (body.action === 'closed') {
           mergeResult = { merged: false, closedWithoutMerge: true }
           break
         }
       }
+
       await runDeleteGitHubWebhook(prResult.repoOwner, prResult.repoName, prResult.githubWebhookId)
     }
 
@@ -372,11 +461,13 @@ export async function synthesisePipeline(
     } satisfies DeployEventData))
 
     const projectResult = await runCreateVercelProject(monorepo, integrationId, discovered.apiName)
+
     for (const line of projectResult.setupLogs) {
       await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: line } satisfies DeployEventData))
     }
 
     const vercelResult = await runPollVercelDeployment(projectResult.vercelProjectId)
+
     for (const line of vercelResult.buildLogs) {
       await emitEvent(createEvent('deploy-mcp', 'building', { buildLog: line } satisfies DeployEventData))
     }
