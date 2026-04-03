@@ -58,6 +58,11 @@ Every tool here was chosen for a specific reason, not just familiarity.
 | **[Neon Postgres](https://neon.tech)** | Relational storage for integration records and encrypted credentials. The serverless HTTP driver works in Vercel functions without connection pooling setup. |
 | **Layered security audit** | 7 deterministic checks run first — fast, free, and catches most issues (SSRF, path traversal, hallucinated endpoints). AI-assisted checks (Sonnet with extended thinking) handle semantic issues like parameter injection. The deterministic layer avoids burning tokens on problems a regex can catch. Any `fail` blocks deploy. |
 | **[Vercel SDK](https://github.com/vercel/sdk) + [Octokit](https://github.com/octokit/rest.js)** | Programmatic project creation, env var injection, and deployment polling. The full deploy pipeline (PR → merge → live URL) runs without manual steps. |
+| **[`mcp-handler`](https://github.com/vercel/mcp-handler)** | Every generated MCP server uses `createMcpHandler()` to expose tools as a Vercel-compatible HTTP endpoint. One import turns a list of tools into a deployed, spec-compliant MCP server — no manual protocol wiring. |
+| **[`@modelcontextprotocol/sdk`](https://github.com/modelcontextprotocol/typescript-sdk)** | The pipeline acts as an MCP *client* — connecting to the sandbox server to call `listTools()` and verify the generated server actually works before deploy. Same SDK powers the live chat validation panel. |
+| **SSE (Server-Sent Events)** | The pipeline takes minutes. SSE streams each stage's progress to the UI in real time so the user sees what's happening without polling. Reconnection picks up from the last event index. |
+| **[Next.js Cache Components](https://nextjs.org/docs/app/api-reference/directives/use-cache)** | The home page lists previous pipeline runs. `'use cache'` with `cacheLife('hours')` caches the Neon query at the edge. Tag-based invalidation revalidates when a new run completes. |
+| **Prompt versioning** | Each prompt carries a `version` field baked into the synthesis cache key. Changing a prompt automatically invalidates stale results — no manual cache busting. |
 
 ---
 
