@@ -6,14 +6,24 @@ import { success, errors } from '@/lib/api/response'
 
 const MAX_SOURCE_LENGTH = 512_000 // ~500KB
 
+// Env vars the generated template is allowed to read — everything else is blocked
+const ALLOWED_ENV_VARS = new Set([
+  'MCP_BASE_URL',
+  'CREDENTIAL_ENDPOINT',
+  'HMAC_SECRET',
+  'INTEGRATION_ID',
+])
+
 // Reject source code that contains suspicious patterns indicative of code injection
 const BLOCKED_PATTERNS = [
-  /process\.env/,         // env var exfiltration
   /child_process/,        // shell spawning
   /\beval\s*\(/,          // eval execution
   /Function\s*\(/,        // dynamic function construction
   /require\s*\(\s*['"`]/,  // dynamic requires
 ]
+
+// Matches process.env.VAR_NAME — captures the var name for allowlist check
+const PROCESS_ENV_RE = /process\.env\.(\w+)/g
 
 const bodySchema = z.object({
   source: z.string().min(1).max(MAX_SOURCE_LENGTH).refine(
@@ -22,6 +32,15 @@ const bodySchema = z.object({
   ).refine(
     (s) => !BLOCKED_PATTERNS.some((p) => p.test(s)),
     { message: 'Source contains blocked patterns.' },
+  ).refine(
+    (s) => {
+      const matches = s.matchAll(PROCESS_ENV_RE)
+      for (const m of matches) {
+        if (!ALLOWED_ENV_VARS.has(m[1])) return false
+      }
+      return true
+    },
+    { message: 'Source references disallowed environment variables.' },
   ),
 })
 
