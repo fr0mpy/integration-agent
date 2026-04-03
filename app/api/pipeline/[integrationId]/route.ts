@@ -1,3 +1,4 @@
+// SSE streaming endpoint — connects to the WDK workflow run and pipes pipeline events to the browser
 import { getRun } from 'workflow/api'
 import { getIntegration } from '@/lib/storage/neon'
 import { mcpConfigCache, discoveryCache } from '@/lib/storage/redis'
@@ -5,6 +6,7 @@ import { success, errors } from '@/lib/api/response'
 import type { PipelineEvent } from '@/lib/pipeline/events'
 
 import { isValidUUID } from '@/lib/validation'
+import { config } from '@/lib/config'
 
 const SSE_HEADERS = {
   'Content-Type': 'text/event-stream',
@@ -62,12 +64,12 @@ export async function GET(
       return success({ config, discovery: discovery ?? null })
     }
 
-    // Poll for run_id — handles race where workflow start hasn't written it yet
+    // Poll for run_id — the workflow start and DB write are async, so the SSE request may arrive first
     let runId = integration.run_id as string | null
 
     if (!runId) {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        await new Promise((r) => setTimeout(r, 1000))
+      for (let attempt = 0; attempt < config.pipeline.runIdPollAttempts; attempt++) {
+        await new Promise((r) => setTimeout(r, config.pipeline.runIdPollIntervalMs))
         const updated = await getIntegration(integrationId)
         runId = (updated?.run_id as string | null) ?? null
         if (runId) break
@@ -78,7 +80,7 @@ export async function GET(
       }
     }
 
-    // Support reconnection from a specific index
+    // SSE reconnection — client sends lastIndex so we only replay events it hasn't seen
     const lastIndexParam = url.searchParams.get('lastIndex')
     let startIndex = 0
 

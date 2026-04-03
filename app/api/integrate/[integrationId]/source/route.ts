@@ -3,8 +3,9 @@ import { getIntegration } from '@/lib/storage/neon'
 import { sourceOverride } from '@/lib/storage/redis'
 import { isValidUUID } from '@/lib/validation'
 import { success, errors } from '@/lib/api/response'
+import { config } from '@/lib/config'
 
-const MAX_SOURCE_LENGTH = 512_000 // ~500KB
+const MAX_SOURCE_LENGTH = config.validation.maxSourceLength
 
 // Env vars the generated template is allowed to read — everything else is blocked
 const ALLOWED_ENV_VARS = new Set([

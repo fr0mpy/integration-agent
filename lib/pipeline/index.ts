@@ -621,7 +621,7 @@ export async function synthesisePipeline(
     let mergeResult = { merged: false, closedWithoutMerge: false };
 
     if (isLocalDev) {
-      const POLL_DEADLINE_MS = 24 * 60 * 60 * 1000;
+      const POLL_DEADLINE_MS = appConfig.deploy.pollDeadlineMs;
       const pollStart = Date.now();
 
       while (Date.now() - pollStart < POLL_DEADLINE_MS) {
@@ -707,8 +707,8 @@ export async function synthesisePipeline(
       } satisfies DeployEventData),
     );
 
-    const PING_TIMEOUT_MS = 10 * 60 * 1000;
-    const PING_POLL_MS = 15_000;
+    const PING_TIMEOUT_MS = appConfig.deploy.pingTimeoutMs;
+    const PING_POLL_MS = appConfig.deploy.pingPollMs;
     const pingDeadline = Date.now() + PING_TIMEOUT_MS;
     let live = false;
 

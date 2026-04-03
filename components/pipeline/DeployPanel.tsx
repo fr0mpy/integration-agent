@@ -1,9 +1,11 @@
+// Deploy stage UI — 7-beat timeline: create repo → push files → open PR → await merge → build → ping → live
 'use client'
 
 import { useState } from 'react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
+import { config } from '@/lib/config'
 import type { DeployEventData } from '@/lib/pipeline/events'
 
 interface DeployPanelProps {
@@ -48,10 +50,10 @@ export function DeployPanel({
     if (!mcpUrl) return
     await navigator.clipboard.writeText(mcpUrl)
     setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    setTimeout(() => setCopied(false), config.ui.clipboardFeedbackMs)
   }
 
-  // Determine which beat we're on
+  // Derive display state from the deploy step lifecycle — each "beat" maps to a UI section
   const isLive = deployStatus === 'complete' || !!mcpUrl
   const isMerged = deployPrStatus === 'merged' || deployStep === 'merged' || deployStep === 'deploying' || deployStep === 'live'
   const _isPrOpen = !!prUrl && !isMerged && !isLive

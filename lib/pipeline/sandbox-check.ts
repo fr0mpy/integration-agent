@@ -1,7 +1,7 @@
 import { Sandbox } from '@vercel/sandbox'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { BUILD_VERSION } from '../config'
+import { BUILD_VERSION, config } from '../config'
 import type { BundleResult } from '../mcp/bundle'
 import type { MCPServerConfig } from '../mcp/types'
 
@@ -14,8 +14,8 @@ export interface SandboxResult {
   buildLogs: string[]
 }
 
-const SANDBOX_LIVE_TIMEOUT_MS = 30 * 60 * 1000  // keep alive for chat use
-const SERVER_WARMUP_MS = 3_000
+const SANDBOX_LIVE_TIMEOUT_MS = config.sandbox.liveTimeoutMs
+const SERVER_WARMUP_MS = config.sandbox.serverWarmupMs
 
 /**
  * Stage 3.5 — Sandbox live MCP test.

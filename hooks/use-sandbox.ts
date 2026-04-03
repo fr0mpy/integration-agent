@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { config } from '@/lib/config'
 
 interface SandboxReadyEvent {
   type: 'ready'
@@ -75,7 +76,7 @@ export function useSandbox(
         const data = await res.json().catch(() => ({}))
         // 503 = race condition (sandbox URL not yet persisted) — retry once after a brief wait
         if (res.status === 503 && !controller.signal.aborted) {
-          await new Promise((r) => setTimeout(r, 2000))
+          await new Promise((r) => setTimeout(r, config.ui.sandboxRetryMs))
           const retry = await fetch(`/api/integrate/${integrationId}/sandbox`, {
             method: 'POST',
             signal: controller.signal,
@@ -180,7 +181,7 @@ export function useSandbox(
       if (!currentUrlRef.current) {
         spinUp()
       }
-    }, 2000)
+    }, config.ui.sandboxFallbackDelayMs)
 
     return () => {
       clearTimeout(timer)

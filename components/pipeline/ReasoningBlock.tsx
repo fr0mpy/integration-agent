@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
+import { config } from '@/lib/config'
 
 export function ReasoningBlock({ text, streaming }: { text: string; streaming: boolean }) {
   const [expanded, setExpanded] = useState(true)
@@ -9,7 +10,7 @@ export function ReasoningBlock({ text, streaming }: { text: string; streaming: b
   // Collapse when streaming finishes
   useEffect(() => {
     if (!streaming) {
-      const t = setTimeout(() => setExpanded(false), 800)
+      const t = setTimeout(() => setExpanded(false), config.ui.reasoningCollapseMs)
       return () => clearTimeout(t)
     }
   }, [streaming])

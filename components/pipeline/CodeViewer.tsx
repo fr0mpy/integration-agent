@@ -1,3 +1,4 @@
+// Tabbed code viewer for generated MCP server files — route.ts is editable with auto-save debounce
 'use client'
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
@@ -6,6 +7,7 @@ import { javascript } from '@codemirror/lang-javascript'
 import { json } from '@codemirror/lang-json'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { cn } from '@/lib/utils'
+import { config } from '@/lib/config'
 
 interface BundledFile {
   file: string
@@ -103,11 +105,11 @@ export function CodeViewer({ integrationId, sourceCode, sandboxBuilding, editabl
     if (editedSource === null || !onSaveRef.current) return
     const timer = setTimeout(() => {
       onSaveRef.current?.(editedSource)
-    }, 1000)
+    }, config.ui.codeSaveDebounceMs)
     return () => clearTimeout(timer)
   }, [editedSource])
 
-  // Override route.ts with live SSE data (only before /files loads) or local edits
+  // Priority: user edits > fetched files > live SSE source (fallback before /files loads)
   const displayFiles = useMemo(() => {
     let result = files
 

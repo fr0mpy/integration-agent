@@ -17,7 +17,9 @@ export const redis = new Redis({
   token: redisToken ?? '',
 })
 
-const CACHE_TTL_SECONDS = 60 * 60 * 24 * 30 // 30 days
+import { config } from '../config'
+
+const CACHE_TTL_SECONDS = config.cache.ttlSeconds
 
 // Wraps any Redis call in a try/catch; returns null on failure so cache misses never crash the pipeline.
 async function safeRedis<T>(label: string, fn: () => Promise<T>): Promise<T | null> {

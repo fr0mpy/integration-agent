@@ -18,10 +18,52 @@ export const config = {
     },
     /** URL prefixes that identify a local dev environment (GitHub rejects webhooks to these). */
     localUrlPrefixes: ['http://localhost', 'http://127.'],
+    vercelApi: 'https://api.vercel.com',
+    buildTimeoutMs: 10 * 60 * 1000,
+    appearTimeoutMs: 5 * 60 * 1000,
+    pollIntervalMs: 20_000,
+    pingTimeoutMs: 10 * 60 * 1000,
+    pingPollMs: 15_000,
+    pollDeadlineMs: 24 * 60 * 60 * 1000,
+    githubBranchInitMs: 1_500,
   },
 
   sse: {
     maxRetries: 3,
     connectionTimeoutMs: 15_000,
+  },
+
+  pipeline: {
+    synthesisMaxRetries: 2,
+    runIdPollAttempts: 3,
+    runIdPollIntervalMs: 1_000,
+  },
+
+  sandbox: {
+    liveTimeoutMs: 30 * 60 * 1000,
+    serverWarmupMs: 3_000,
+  },
+
+  discovery: {
+    maxEndpoints: 50,
+    minSummaryLength: 10,
+    maxSchemaDepth: 2,
+  },
+
+  validation: {
+    maxSpecSize: 10 * 1024 * 1024,
+    maxSourceLength: 512_000,
+  },
+
+  cache: {
+    ttlSeconds: 60 * 60 * 24 * 30,
+  },
+
+  ui: {
+    reasoningCollapseMs: 800,
+    codeSaveDebounceMs: 1_000,
+    clipboardFeedbackMs: 2_000,
+    sandboxRetryMs: 2_000,
+    sandboxFallbackDelayMs: 2_000,
   },
 } as const

@@ -1,3 +1,4 @@
+// GitHub deploy stage — ensures monorepo exists, pushes files via Git Trees API, opens PR, registers webhook
 import { Octokit } from '@octokit/rest'
 import type { BundledFile } from '../../mcp/bundle'
 import { config } from '../../config'
@@ -64,7 +65,7 @@ export async function ensureMonorepo(): Promise<MonorepoInfo> {
   })
 
   // Give GitHub a moment to initialise the default branch
-  await sleep(1500)
+  await sleep(config.deploy.githubBranchInitMs)
 
   return {
     repoOwner: owner,

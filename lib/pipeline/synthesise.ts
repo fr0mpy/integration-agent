@@ -3,9 +3,10 @@ import { synthesisModel, buildTags } from '../ai/gateway'
 import { prompts, buildSystemPrompt } from '../prompts'
 import { buildSynthesisPrompt } from '../prompts/builders/synthesis'
 import { MCPSynthesisOutputSchema, MCPServerConfigSchema, type MCPSynthesisOutput, type MCPToolDefinition, type MCPServerConfig } from '../mcp/types'
+import { config } from '../config'
 import type { DiscoveryResult, DiscoveredEndpoint } from './discover'
 
-const MAX_RETRIES = 2
+const MAX_RETRIES = config.pipeline.synthesisMaxRetries
 
 /**
  * Stage 2 — Synthesis.
@@ -21,6 +22,7 @@ export async function synthesiseTools(
   discovered: DiscoveryResult,
   buildErrors?: string,
 ): Promise<MCPServerConfig> {
+  // Build the prompt from discovered endpoints — append sandbox build errors if this is a retry
   let userPrompt = buildSynthesisPrompt(discovered)
 
   if (buildErrors) {
@@ -32,6 +34,7 @@ export async function synthesiseTools(
   const safeName = discovered.apiName.replace(/[\x00-\x1F\x7F]/g, '')
   console.log(`[Synthesis] Starting for "${safeName}" (${discovered.endpointCount} endpoints)`)
 
+  // Retry loop — on failure, feed the error back into the prompt so the model can self-correct
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const prompt = lastError
       ? `${userPrompt}\n\nPrevious attempt failed validation with these errors:\n${lastError}\n\nPlease fix the issues and try again.`
@@ -41,6 +44,7 @@ export async function synthesiseTools(
     console.log(`[Synthesis] Attempt ${attempt + 1}/${MAX_RETRIES + 1} for "${safeName}"`, { tags })
 
     try {
+      // Call Haiku via AI Gateway — Output.object validates against Zod schema at runtime
       const { output } = await generateText({
         model: synthesisModel(),
         system: buildSystemPrompt(prompts.synthesis),
@@ -51,14 +55,17 @@ export async function synthesiseTools(
         },
       })
 
+      // Schema validated but model returned nothing parseable — retry with error context
       if (!output) {
         lastError = 'Model returned no structured output'
         console.warn(`[Synthesis] Attempt ${attempt + 1}/${MAX_RETRIES + 1}: null output`)
         continue
       }
 
+      // Map LLM's index-based output back to discovered endpoints — inject structural fields from spec
       const tools = assembleMCPTools(output, discovered)
 
+      // All tools dropped means the LLM's endpoint indexes didn't match — retry
       if (tools.length === 0) {
         lastError = 'All tools were dropped — endpoint indexes did not match discovered endpoints'
         console.warn(`[Synthesis] Attempt ${attempt + 1}/${MAX_RETRIES + 1}: ${lastError}`)
@@ -94,12 +101,14 @@ export async function synthesiseTools(
 
 type PropType = 'string' | 'number' | 'boolean' | 'array' | 'object'
 
+// Coerce OpenAPI types to JSON Schema subset — 'integer' → 'number', unknowns → 'string'
 function normalizeType(t: string): PropType {
   if (t === 'integer') return 'number'
   if (['string', 'number', 'boolean', 'array', 'object'].includes(t)) return t as PropType
   return 'string'
 }
 
+// Build the tool's input schema from spec params + request body — LLM only provides descriptions
 function buildInputSchema(
   ep: DiscoveredEndpoint,
   propertyDescriptions: Record<string, string>,
@@ -132,6 +141,7 @@ function buildInputSchema(
   return { type: 'object', properties, required }
 }
 
+// Merge params from multiple endpoints into a single schema for composed (multi-step) tools
 function buildComposedInputSchema(
   endpoints: DiscoveredEndpoint[],
   propertyDescriptions: Record<string, string>,

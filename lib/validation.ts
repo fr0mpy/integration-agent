@@ -42,7 +42,9 @@ function isPrivateIP(ip: string): boolean {
   return BLOCKED_IP_RANGES.some((range) => range.test(ip))
 }
 
-const MAX_SPEC_SIZE = 10 * 1024 * 1024 // 10MB
+import { config } from './config'
+
+const MAX_SPEC_SIZE = config.validation.maxSpecSize
 
 /**
  * Validates a spec URL and fetches it atomically — DNS resolution and fetch

@@ -74,8 +74,10 @@ function groupEndpoints(endpoints: DiscoveredEndpoint[]): Record<string, Discove
 
 // ── AI Enrichment (Stage 1b) ──────────────────────────────────────────────────
 
-const MAX_ENDPOINTS = 50
-const MIN_SUMMARY_LENGTH = 10
+import { config } from '../config'
+
+const MAX_ENDPOINTS = config.discovery.maxEndpoints
+const MIN_SUMMARY_LENGTH = config.discovery.minSummaryLength
 
 const EnrichmentSchema = z.object({
   selectedEndpoints: z.array(z.object({
@@ -374,7 +376,7 @@ function extractRequestBody(operation: Record<string, unknown>): RequestBodyInfo
   }
 }
 
-const MAX_SCHEMA_DEPTH = 2
+const MAX_SCHEMA_DEPTH = config.discovery.maxSchemaDepth
 
 // Flattens a JSON Schema object's properties into a structured SchemaInfo; feeds the synthesis prompt.
 function extractSchemaInfo(schema: Record<string, unknown>): SchemaInfo {

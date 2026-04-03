@@ -6,13 +6,13 @@ import { mcpConfigCache, sourceOverride } from '@/lib/storage/redis'
 import { bundleServer } from '@/lib/mcp/bundle'
 import { isValidUUID } from '@/lib/validation'
 import { errors } from '@/lib/api/response'
-import { BUILD_VERSION } from '@/lib/config'
+import { BUILD_VERSION, config } from '@/lib/config'
 import type { MCPServerConfig } from '@/lib/mcp/types'
 
 export const maxDuration = 300
 
-const SANDBOX_LIVE_TIMEOUT_MS = 30 * 60 * 1000
-const SERVER_WARMUP_MS = 3_000
+const SANDBOX_LIVE_TIMEOUT_MS = config.sandbox.liveTimeoutMs
+const SERVER_WARMUP_MS = config.sandbox.serverWarmupMs
 
 /**
  * POST /api/integrate/[integrationId]/sandbox

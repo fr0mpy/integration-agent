@@ -24,10 +24,10 @@ interface SharedEnvVar {
   projectId: string[]
 }
 
-const VERCEL_API = 'https://api.vercel.com'
-const VERCEL_BUILD_TIMEOUT_MS = 10 * 60 * 1000
-const DEPLOY_APPEAR_TIMEOUT_MS = 5 * 60 * 1000  // max wait for Vercel to queue the first deployment
-const DEPLOY_POLL_INTERVAL_MS = 20_000           // how often to check
+const VERCEL_API = config.deploy.vercelApi
+const VERCEL_BUILD_TIMEOUT_MS = config.deploy.buildTimeoutMs
+const DEPLOY_APPEAR_TIMEOUT_MS = config.deploy.appearTimeoutMs
+const DEPLOY_POLL_INTERVAL_MS = config.deploy.pollIntervalMs
 
 function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms))
