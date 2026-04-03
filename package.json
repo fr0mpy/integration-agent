@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint .",
     "test": "vitest run",
-    "eval": "tsx lib/eval/run.ts"
+    "eval": "tsx lib/eval/run.ts",
+    "clear": "tsx --env-file=.env.local scripts/clear-db.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.64",
