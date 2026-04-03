@@ -1,6 +1,7 @@
 import { createHash } from 'crypto'
 import { Redis } from '@upstash/redis'
 import synthesisPrompt from '../prompts/synthesis.json'
+import { BUILD_VERSION } from '../config'
 
 const redisUrl = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL
 const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN
@@ -8,6 +9,8 @@ const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_A
 if (!redisUrl || !redisToken) {
   console.error('Redis env vars not configured (UPSTASH_REDIS_REST_URL / KV_REST_API_URL)')
 }
+
+console.log(`[v${BUILD_VERSION}] Redis init: url=${redisUrl ? redisUrl.slice(0, 30) + '...' : 'MISSING'} token=${redisToken ? 'SET' : 'MISSING'}`)
 
 export const redis = new Redis({
   url: redisUrl ?? '',
@@ -50,19 +53,27 @@ export const specUrlIndex = {
 export const mcpConfigCache = {
   // Reads a previously validated MCPServerConfig; a hit allows the pipeline to skip synthesis and sandbox entirely.
   get(specHash: string) {
-    return safeRedis('mcpConfigCache read', () => redis.get(`cache:${synthesisPrompt.version}:${specHash}`))
+    const key = `cache:${synthesisPrompt.version}:${specHash}`
+    return safeRedis('mcpConfigCache read', async () => {
+      const result = await redis.get(key)
+      console.log(`[v${BUILD_VERSION}] mcpConfigCache.get key=${key.slice(0, 40)} hit=${result !== null}`)
+      return result
+    })
   },
 
   // Persists a validated config keyed by spec hash; only written after sandbox validation passes.
   set(specHash: string, config: unknown) {
     return safeRedis('mcpConfigCache write', async () => {
       const key = `cache:${synthesisPrompt.version}:${specHash}`
+      console.log(`[v${BUILD_VERSION}] mcpConfigCache.set key=${key.slice(0, 40)} configType=${typeof config}`)
       const result = await redis.set(key, config, { ex: CACHE_TTL_SECONDS })
+      console.log(`[v${BUILD_VERSION}] mcpConfigCache.set result=${result}`)
       const check = await redis.get(key)
       if (!check) {
-        console.error(`mcpConfigCache: write-then-read FAILED for key=${key.slice(0, 30)}`)
+        console.error(`[v${BUILD_VERSION}] mcpConfigCache: write-then-read FAILED for key=${key.slice(0, 40)}`)
         return null
       }
+      console.log(`[v${BUILD_VERSION}] mcpConfigCache.set write-then-read OK, toolCount=${Array.isArray((check as Record<string, unknown>)?.tools) ? ((check as Record<string, unknown>).tools as unknown[]).length : '?'}`)
       return result
     })
   },

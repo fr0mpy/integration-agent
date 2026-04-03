@@ -2,6 +2,8 @@
  * Central configuration — single source of truth for all hardcoded values.
  * Import from here instead of scattering magic strings across files.
  */
+export const BUILD_VERSION = process.env.BUILD_VERSION ?? 'dev'
+
 export const config = {
   models: {
     synthesis: 'anthropic/claude-haiku-4.5',

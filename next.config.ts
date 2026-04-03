@@ -1,9 +1,18 @@
 import type { NextConfig } from 'next'
 import { withWorkflow } from 'workflow/next'
+import { execSync } from 'child_process'
 
 const isDev = process.env.NODE_ENV === 'development'
 
+let gitSha = 'unknown'
+try {
+  gitSha = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
+} catch { /* not in a git repo during build */ }
+
 const nextConfig: NextConfig = {
+  env: {
+    BUILD_VERSION: `${gitSha}-${Date.now()}`,
+  },
   cacheComponents: true,
   outputFileTracingIncludes: {
     '/api/*': ['./generated-server-template/**/*'],

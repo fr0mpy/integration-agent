@@ -6,6 +6,7 @@ import { mcpConfigCache, sourceOverride } from '@/lib/storage/redis'
 import { bundleServer } from '@/lib/mcp/bundle'
 import { isValidUUID } from '@/lib/validation'
 import { errors } from '@/lib/api/response'
+import { BUILD_VERSION } from '@/lib/config'
 import type { MCPServerConfig } from '@/lib/mcp/types'
 
 export const maxDuration = 300
@@ -31,11 +32,15 @@ export async function POST(
 
   const integration = await getIntegration(integrationId)
 
+  console.log(`[v${BUILD_VERSION}] sandbox/route: integrationId=${integrationId} found=${!!integration} status=${integration?.status} spec_hash=${integration?.spec_hash?.slice(0, 12)}`)
+
   if (!integration) {
     return errors.notFound('Integration not found.')
   }
 
   const config = await mcpConfigCache.get(integration.spec_hash) as MCPServerConfig | null
+
+  console.log(`[v${BUILD_VERSION}] sandbox/route: config cached=${!!config} spec_hash=${integration.spec_hash?.slice(0, 12)} toolCount=${config?.tools?.length ?? 0}`)
 
   if (!config) {
     // If the pipeline is still running (status=validating), the client likely hit this
@@ -43,6 +48,7 @@ export async function POST(
     if (integration.status === 'validating') {
       return errors.serviceUnavailable('Sandbox URL not yet persisted. Retry in a moment.')
     }
+    console.error(`[v${BUILD_VERSION}] sandbox/route: CONFIG NOT CACHED — spec_hash=${integration.spec_hash} status=${integration.status}`)
     return errors.notFound('Config not cached. Re-run the pipeline first.')
   }
 
@@ -74,6 +80,7 @@ export async function POST(
         send({ type: 'log', message: 'Setting up sandbox...' })
 
         const snapshotId = process.env.SANDBOX_SNAPSHOT_ID
+        console.log(`[v${BUILD_VERSION}] sandbox/route: creating sandbox snapshotId=${snapshotId ?? 'none'} baseUrl=${config.baseUrl}`)
 
         sandbox = await Sandbox.create({
           ...(snapshotId
@@ -83,8 +90,10 @@ export async function POST(
           env: { MCP_BASE_URL: config.baseUrl },
           timeout: SANDBOX_LIVE_TIMEOUT_MS,
         })
+
+        console.log(`[v${BUILD_VERSION}] sandbox/route: sandbox created id=${sandbox.sandboxId}`)
       } catch (err) {
-        console.error('Sandbox creation failed:', err instanceof Error ? err.message : 'unknown')
+        console.error(`[v${BUILD_VERSION}] sandbox/route: Sandbox.create FAILED:`, err instanceof Error ? err.stack : String(err))
         send({ type: 'error', message: 'Sandbox creation failed.' })
         controller.close()
         return
@@ -130,6 +139,7 @@ export async function POST(
         await new Promise((resolve) => setTimeout(resolve, SERVER_WARMUP_MS))
 
         const sandboxUrl = sandbox.domain(3000)
+        console.log(`[v${BUILD_VERSION}] sandbox/route: domain=${sandboxUrl} sandboxId=${sandbox.sandboxId}`)
         send({ type: 'log', message: 'MCP server started — verifying tools...' })
 
         // Verify MCP tools

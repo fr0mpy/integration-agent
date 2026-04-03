@@ -133,8 +133,11 @@ async function cacheDiscovery(specHash: string, discovered: DiscoveryResult) {
 // Stores all tools so cached config is never locked to a prior exclusion choice.
 async function cacheMcpConfig(specHash: string, config: MCPServerConfig) {
   'use step';
+  const { BUILD_VERSION } = await import('../config');
+  console.log(`[v${BUILD_VERSION}] pipeline.cacheMcpConfig: specHash=${specHash.slice(0, 12)} toolCount=${config.tools.length}`);
   const { mcpConfigCache } = await import('../storage/redis');
   const result = await mcpConfigCache.set(specHash, config);
+  console.log(`[v${BUILD_VERSION}] pipeline.cacheMcpConfig: result=${result}`);
   if (result === null) {
     throw new Error(`Failed to cache MCP config for specHash=${specHash.slice(0, 8)} — Redis write returned null`);
   }
@@ -157,6 +160,8 @@ async function setIntegrationStatus(integrationId: string, status: string) {
 // Saves verified tool list to the integration row after the live MCP test passes.
 async function persistValidation(integrationId: string, result: SandboxResult) {
   'use step';
+  const { BUILD_VERSION } = await import('../config');
+  console.log(`[v${BUILD_VERSION}] pipeline.persistValidation: integrationId=${integrationId} sandboxUrl=${result.sandboxUrl} sandboxId=${result.sandboxId} verifiedTools=${result.verifiedTools.length}`);
   const { updateIntegration } = await import('../storage/neon');
   await updateIntegration(integrationId, {
     verified_tools: result.verifiedTools,

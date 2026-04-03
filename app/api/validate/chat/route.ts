@@ -6,6 +6,7 @@ import { mcpConfigCache, sourceOverride } from '@/lib/storage/redis'
 import { bundleServer } from '@/lib/mcp/bundle'
 import { validateSandboxUrl, ValidationError } from '@/lib/validation'
 import { errors } from '@/lib/api/response'
+import { BUILD_VERSION } from '@/lib/config'
 import { chatModel, buildTags } from '@/lib/ai/gateway'
 import { prompts, interpolate, buildSystemPrompt } from '@/lib/prompts'
 import type { MCPServerConfig } from '@/lib/mcp/types'
@@ -35,6 +36,8 @@ export async function POST(req: Request) {
 
     const { messages, integrationId, sandboxUrl } = parsed.data
 
+    console.log(`[v${BUILD_VERSION}] chat/route: integrationId=${integrationId} sandboxUrl=${sandboxUrl ?? 'NONE'} messageCount=${messages.length}`)
+
     // SSRF guard: validate sandboxUrl resolves to a public IP
     if (sandboxUrl) {
       try {
@@ -52,7 +55,10 @@ export async function POST(req: Request) {
 
     const config = await mcpConfigCache.get(integration.spec_hash) as MCPServerConfig | null
 
+    console.log(`[v${BUILD_VERSION}] chat/route: config cached=${!!config} spec_hash=${integration.spec_hash?.slice(0, 12)} toolCount=${config?.tools?.length ?? 0}`)
+
     if (!config) {
+      console.error(`[v${BUILD_VERSION}] chat/route: CONFIG NOT CACHED — spec_hash=${integration.spec_hash} status=${integration.status}`)
       return errors.notFound('Config not cached.')
     }
 

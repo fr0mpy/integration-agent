@@ -1,6 +1,7 @@
 import { Sandbox } from '@vercel/sandbox'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { BUILD_VERSION } from '../config'
 import type { BundleResult } from '../mcp/bundle'
 import type { MCPServerConfig } from '../mcp/types'
 
@@ -33,6 +34,8 @@ export async function runSandboxCheck(
   const snapshotId = process.env.SANDBOX_SNAPSHOT_ID
   const logs: string[] = []
 
+  console.log(`[v${BUILD_VERSION}] sandbox-check: starting — snapshotId=${snapshotId ?? 'none'} baseUrl=${config.baseUrl} toolCount=${config.tools.length} fileCount=${bundle.files.length}`)
+
   let sandbox: Sandbox
 
   try {
@@ -45,6 +48,7 @@ export async function runSandboxCheck(
       timeout: SANDBOX_LIVE_TIMEOUT_MS,
     })
   } catch (err) {
+    console.error(`[v${BUILD_VERSION}] sandbox-check: Sandbox.create FAILED:`, err instanceof Error ? err.stack : String(err))
     return {
       ok: false,
       verifiedTools: [],
@@ -99,6 +103,7 @@ export async function runSandboxCheck(
     await new Promise((resolve) => setTimeout(resolve, SERVER_WARMUP_MS))
 
     const sandboxUrl = sandbox.domain(3000)
+    console.log(`[v${BUILD_VERSION}] sandbox-check: domain=${sandboxUrl} sandboxId=${sandbox.sandboxId}`)
     logs.push('MCP server started — verifying tools...')
 
     // Connect MCP client and call list_tools — always close client in finally
@@ -135,6 +140,7 @@ export async function runSandboxCheck(
     logs.push('Sandbox live — isolated Firecracker VM')
 
     // Success — leave sandbox running (30 min TTL) for chat callTool use
+    console.log(`[v${BUILD_VERSION}] sandbox-check: SUCCESS — verified=${returnedNames.length} sandboxUrl=${sandboxUrl} sandboxId=${sandbox.sandboxId}`)
     return { ok: true, verifiedTools: returnedNames, sandboxUrl, sandboxId: sandbox.sandboxId, buildLogs: logs }
   } finally {
     // Only stop on failure — successful sandboxes stay alive for the chat panel

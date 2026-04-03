@@ -1,6 +1,11 @@
 {
   "version": "1.0.0",
   "steps": {
+    "node_modules/workflow/dist/stdlib.js": {
+      "fetch": {
+        "stepId": "step//workflow@4.2.0-beta.74//fetch"
+      }
+    },
     "node_modules/workflow/dist/internal/builtins.js": {
       "__builtin_response_array_buffer": {
         "stepId": "__builtin_response_array_buffer"
@@ -10,11 +15,6 @@
       },
       "__builtin_response_text": {
         "stepId": "__builtin_response_text"
-      }
-    },
-    "node_modules/workflow/dist/stdlib.js": {
-      "fetch": {
-        "stepId": "step//workflow@4.2.0-beta.74//fetch"
       }
     },
     "lib/pipeline/index.ts": {
@@ -54,9 +54,6 @@
       "persistValidation": {
         "stepId": "step//./lib/pipeline/index//persistValidation"
       },
-      "runCheckDeploymentStatus": {
-        "stepId": "step//./lib/pipeline/index//runCheckDeploymentStatus"
-      },
       "runCodegen": {
         "stepId": "step//./lib/pipeline/index//runCodegen"
       },
@@ -77,6 +74,9 @@
       },
       "runFindDeployment": {
         "stepId": "step//./lib/pipeline/index//runFindDeployment"
+      },
+      "runPingDeployment": {
+        "stepId": "step//./lib/pipeline/index//runPingDeployment"
       },
       "runSecurityAudit": {
         "stepId": "step//./lib/pipeline/index//runSecurityAudit"
