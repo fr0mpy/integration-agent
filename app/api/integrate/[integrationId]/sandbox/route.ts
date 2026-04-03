@@ -149,8 +149,7 @@ export async function POST(
         await new Promise((resolve) => setTimeout(resolve, SERVER_WARMUP_MS))
 
         const sandboxUrl = sandbox.domain(3000)
-        send({ type: 'log', message: `Server live at ${sandboxUrl}` })
-        send({ type: 'log', message: 'Sandbox live — isolated Firecracker VM' })
+        send({ type: 'log', message: 'MCP server started — verifying tools...' })
 
         // Verify MCP tools
         const client = new Client({ name: 'integration-agent-respawn', version: '1.0.0' })
@@ -178,6 +177,7 @@ export async function POST(
         }
 
         send({ type: 'log', message: `${returnedNames.length}/${expectedNames.length} tools verified` })
+        send({ type: 'log', message: 'Sandbox live — isolated Firecracker VM' })
 
         // Persist new sandbox URL to DB
         await updateIntegration(integrationId, {

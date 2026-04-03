@@ -99,8 +99,7 @@ export async function runSandboxCheck(
     await new Promise((resolve) => setTimeout(resolve, SERVER_WARMUP_MS))
 
     const sandboxUrl = sandbox.domain(3000)
-    logs.push(`Server live at ${sandboxUrl}`)
-    logs.push('Sandbox live — isolated Firecracker VM')
+    logs.push('MCP server started — verifying tools...')
 
     // Connect MCP client and call list_tools — always close client in finally
     const client = new Client({ name: 'integration-agent-validator', version: '1.0.0' })
@@ -133,6 +132,7 @@ export async function runSandboxCheck(
     }
 
     logs.push(`${returnedNames.length}/${expectedNames.length} tools verified`)
+    logs.push('Sandbox live — isolated Firecracker VM')
 
     // Success — leave sandbox running (30 min TTL) for chat callTool use
     return { ok: true, verifiedTools: returnedNames, sandboxUrl, sandboxId: sandbox.sandboxId, buildLogs: logs }
