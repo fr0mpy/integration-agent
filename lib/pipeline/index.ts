@@ -359,11 +359,11 @@ export async function synthesisePipeline(
     await cacheMcpConfig(specHash, config);
 
     // ─── Pause: Wait for user to review tools and trigger build ───────────────
-    await emitEvent(createEvent('build-mcp', 'awaiting-trigger'));
-
     using buildHook = createHook<{ excludedTools: string[] }>({
       token: `build-trigger:${integrationId}`,
     });
+
+    await emitEvent(createEvent('build-mcp', 'awaiting-trigger'));
     const buildPayload = await buildHook;
 
     // Filter out tools the user toggled off
@@ -483,11 +483,12 @@ export async function synthesisePipeline(
     await emitEvent(createEvent('preview-mcp', 'done'));
 
     // ─── Pause: Wait for manual trigger (iterable — allows re-runs) ─────────
-    await emitEvent(createEvent('audit-mcp', 'awaiting-trigger'));
-
+    // Create hook BEFORE emitting the UI event to prevent resumeHook racing ahead.
     using auditHook = createHook<{ triggered: boolean }>({
       token: `audit-trigger:${integrationId}`,
     });
+
+    await emitEvent(createEvent('audit-mcp', 'awaiting-trigger'));
 
     for await (const _trigger of auditHook) {
       // Apply user edits (if any) before each audit run
