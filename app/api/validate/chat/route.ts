@@ -6,7 +6,7 @@ import { mcpConfigCache, sourceOverride } from '@/lib/storage/redis'
 import { bundleServer } from '@/lib/mcp/bundle'
 import { validateSandboxUrl, ValidationError } from '@/lib/validation'
 import { errors } from '@/lib/api/response'
-import { chatModel } from '@/lib/ai/gateway'
+import { chatModel, buildTags } from '@/lib/ai/gateway'
 import { prompts, interpolate, buildSystemPrompt } from '@/lib/prompts'
 import type { MCPServerConfig } from '@/lib/mcp/types'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -19,8 +19,8 @@ const bodySchema = z.object({
   sandboxUrl: z.string().url().startsWith('https://').nullish(),
   messages: z.array(z.object({
     role: z.enum(['user', 'assistant', 'system']),
-    parts: z.array(z.record(z.unknown())).optional(),
-    content: z.union([z.string().max(50_000), z.array(z.unknown())]).optional(),
+    parts: z.array(z.record(z.unknown())).max(50).optional(),
+    content: z.union([z.string().max(50_000), z.array(z.unknown()).max(50)]).optional(),
   })).max(100),
 })
 
@@ -79,6 +79,9 @@ export async function POST(req: Request) {
 
     const result = streamText({
       model: chatModel(),
+      providerOptions: {
+        gateway: { tags: buildTags(integration.name ?? integrationId, 'chat') },
+      },
       messages: [
         // Cache the static system context (tool list + source code) — same per integration
         {
@@ -104,6 +107,7 @@ export async function POST(req: Request) {
             if (sandboxUrl) {
               const client = new Client({ name: 'integration-agent-chat', version: '1.0.0' })
               const transport = new StreamableHTTPClientTransport(new URL(`${sandboxUrl}/mcp`))
+
               try {
                 await client.connect(transport)
                 const result = await client.listTools()
@@ -141,14 +145,17 @@ export async function POST(req: Request) {
             if (sandboxUrl) {
               const client = new Client({ name: 'integration-agent-chat', version: '1.0.0' })
               const transport = new StreamableHTTPClientTransport(new URL(`${sandboxUrl}/mcp`))
+
               try {
                 await client.connect(transport)
                 const result = await client.listTools()
                 const tool = result.tools.find((t) => t.name === toolName)
+
                 if (!tool) {
                   const available = result.tools.map((t) => t.name).join(', ')
                   return { error: `Tool "${toolName}" not found in sandbox. Available: ${available}` }
                 }
+
                 return { name: tool.name, description: tool.description, inputSchema: tool.inputSchema }
               } catch (err) {
                 return { error: `Sandbox unreachable: ${err instanceof Error ? err.message : String(err)}` }
@@ -159,9 +166,11 @@ export async function POST(req: Request) {
 
             // No sandbox — fall back to cached config
             const tool = config.tools.find((t) => t.name === toolName)
+
             if (!tool) {
               return { error: `Tool "${toolName}" not found. Available: ${config.tools.map((t) => t.name).join(', ')}` }
             }
+
             return {
               name: tool.name,
               title: tool.title,

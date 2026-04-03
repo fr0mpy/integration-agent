@@ -79,8 +79,7 @@ async function ensureSharedEnvVars(projectId: string, token: string, teamId: str
       })
 
       if (!res.ok) {
-        const body = (await res.json()) as unknown
-        console.error(`Failed to create shared env var ${key}:`, body)
+        console.error(`Failed to create shared env var ${key} (${res.status})`)
         throw new Error(`Failed to create shared env var ${key} (status ${res.status})`)
       }
     } else if (!existing.projectId.includes(projectId)) {
@@ -118,8 +117,7 @@ async function injectProjectEnvVar(
   })
 
   if (!res.ok) {
-    const body = (await res.json()) as unknown
-    throw new Error(`Failed to inject env var ${key}: ${JSON.stringify(body)}`)
+    throw new Error(`Failed to inject env var ${key} (status ${res.status})`)
   }
 }
 

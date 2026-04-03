@@ -14,7 +14,7 @@ export function chatModel() {
 // Constructs the AI Gateway cost-tracking tags array for a given integration and pipeline stage; used to attribute model spend by integration in the Gateway dashboard.
 export function buildTags(
   integrationName: string,
-  stage: 'discover' | 'synthesis' | 'validation' | 'config-ui' | 'eval' | 'audit',
+  stage: 'discover' | 'synthesis' | 'validation' | 'config-ui' | 'eval' | 'audit' | 'chat',
   extra?: string
 ): string[] {
   const tags: string[] = [

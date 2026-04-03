@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useEffect, useState, useMemo } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from 'ai'
 import { cn } from '@/lib/utils'
@@ -28,15 +28,24 @@ export function ChatPanel({ integrationId, sandboxUrl, validatedAt: _validatedAt
   // useChat ignores transport prop changes after mount (transport is readonly in AbstractChat).
   // Keep sandboxUrl in a ref so the body function always sends the current value at request time.
   const sandboxUrlRef = useRef<string | null>(sandboxUrl)
-  sandboxUrlRef.current = sandboxUrl
+  const integrationIdRef = useRef(integrationId)
 
-  const transport = useMemo(
+  useEffect(() => {
+    sandboxUrlRef.current = sandboxUrl
+  }, [sandboxUrl])
+
+  useEffect(() => {
+    integrationIdRef.current = integrationId
+  }, [integrationId])
+
+  /* eslint-disable react-hooks/refs -- refs are only read inside the body() callback at request time, not during init */
+  const [transport] = useState(
     () => new DefaultChatTransport({
       api: '/api/validate/chat',
-      body: () => ({ integrationId, sandboxUrl: sandboxUrlRef.current }),
+      body: () => ({ integrationId: integrationIdRef.current, sandboxUrl: sandboxUrlRef.current }),
     }),
-    [integrationId],
   )
+  /* eslint-enable react-hooks/refs */
 
   const { messages, sendMessage, status } = useChat({
     transport,

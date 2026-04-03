@@ -6,8 +6,23 @@ import { success, errors } from '@/lib/api/response'
 
 const MAX_SOURCE_LENGTH = 512_000 // ~500KB
 
+// Reject source code that contains suspicious patterns indicative of code injection
+const BLOCKED_PATTERNS = [
+  /process\.env/,         // env var exfiltration
+  /child_process/,        // shell spawning
+  /\beval\s*\(/,          // eval execution
+  /Function\s*\(/,        // dynamic function construction
+  /require\s*\(\s*['"`]/,  // dynamic requires
+]
+
 const bodySchema = z.object({
-  source: z.string().min(1).max(MAX_SOURCE_LENGTH),
+  source: z.string().min(1).max(MAX_SOURCE_LENGTH).refine(
+    (s) => s.includes('server.tool(') || s.includes('server.tool ('),
+    { message: 'Source must contain at least one server.tool() registration.' },
+  ).refine(
+    (s) => !BLOCKED_PATTERNS.some((p) => p.test(s)),
+    { message: 'Source contains blocked patterns.' },
+  ),
 })
 
 export async function PUT(
