@@ -1,3 +1,4 @@
+// Entry point — spec URL input + recent pipeline history (cached via Next.js cache components)
 import Link from 'next/link';
 import { cacheLife, cacheTag } from 'next/cache';
 import { SpecInput } from '@/components/SpecInput';
@@ -6,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { RelativeTime } from '@/components/RelativeTime';
 
+// Cache integration list at the edge — revalidated hourly via cacheTag('integrations')
 async function getCachedIntegrations() {
   'use cache'
   cacheLife('hours')
@@ -53,6 +55,7 @@ export default async function Home() {
   );
 }
 
+// Map pipeline status to UI badge style — pulse animates in-progress stages
 function statusInfo(integration: IntegrationSummary): {
   label: string;
   className: string;
@@ -99,6 +102,7 @@ function statusInfo(integration: IntegrationSummary): {
   }
 }
 
+// Extract hostname and path from spec URL for compact display in the integration list
 function parseSpecUrl(url: string | null): {
   host: string | null;
   path: string | null;
@@ -113,6 +117,7 @@ function parseSpecUrl(url: string | null): {
   }
 }
 
+// Single row in the recent pipelines list — links to the pipeline detail page
 function IntegrationRow({ integration }: { integration: IntegrationSummary }) {
   const href = `/integrate/${integration.id}`;
   const { label, className, pulse } = statusInfo(integration);

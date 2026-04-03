@@ -1,3 +1,4 @@
+// Security audit results panel — displays findings sorted by severity with a deploy-blocking banner
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
@@ -10,6 +11,7 @@ interface AuditPanelProps {
   status: 'pending' | 'running' | 'complete' | 'failed'
 }
 
+// Visual treatment per severity — fail (red) blocks deploy, warn (amber) is advisory, pass (green) is clear
 const SEVERITY_STYLES = {
   pass: {
     border: 'border-l-emerald-500',
@@ -28,6 +30,7 @@ const SEVERITY_STYLES = {
   },
 } as const
 
+// Sort critical issues to the top so the most important findings are seen first
 const SEVERITY_ORDER: Record<string, number> = { fail: 0, warn: 1, pass: 2 }
 
 export function AuditPanel({ findings, summary, blocked, status }: AuditPanelProps) {
@@ -101,6 +104,7 @@ export function AuditPanel({ findings, summary, blocked, status }: AuditPanelPro
   )
 }
 
+// Individual finding card — colour-coded left border, severity badge, affected tool names
 function FindingCard({ finding }: { finding: AuditFinding }) {
   const style = SEVERITY_STYLES[finding.severity]
 

@@ -1,5 +1,7 @@
+// Renders a single tool call in the chat panel — shows streaming input, execution state, and output/error
 import { cn } from '@/lib/utils'
 
+// Tool call lifecycle: input-streaming → input-available (running) → output-available | output-error
 export type ToolState = 'input-streaming' | 'input-available' | 'output-available' | 'output-error'
 
 export function ChatToolCall({
@@ -18,6 +20,7 @@ export function ChatToolCall({
   const isStreaming = state === 'input-streaming'
   const hasResult = state === 'output-available' || state === 'output-error'
 
+  // Friendly labels for the 3 chat tools — matches the tool names in validate/chat/route.ts
   const toolLabel: Record<string, string> = {
     listTools: '📋 listTools',
     readTool: '📖 readTool',

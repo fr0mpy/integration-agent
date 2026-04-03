@@ -1,3 +1,4 @@
+// Renders a single chat message — dispatches to reasoning blocks, text, step dividers, or tool call cards
 import type { UIMessage } from 'ai'
 import { ReasoningBlock } from './ReasoningBlock'
 import { ChatToolCall } from './ChatToolCall'
@@ -22,6 +23,7 @@ export function MessageBubble({ message }: { message: UIMessage }) {
 
   return (
     <div className="mb-4">
+      {/* Each message part renders as its own block — reasoning, text, step dividers, or tool calls */}
       {message.parts.map((part, i) => {
         switch (part.type) {
           case 'reasoning':
@@ -45,9 +47,9 @@ export function MessageBubble({ message }: { message: UIMessage }) {
               <hr key={i} className="my-3 border-zinc-700/50" />
             ) : null
 
+          // Tool call parts — strip the 'tool-' prefix and delegate to ChatToolCall
           case 'tool-listTools':
           case 'tool-readTool':
-
           case 'tool-callTool': {
             const toolName = part.type.replace('tool-', '')
             const state = part.state as ToolState

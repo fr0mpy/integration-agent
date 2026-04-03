@@ -1,3 +1,4 @@
+// Chat validation route — streams Sonnet responses with 3 tools (list, read, call) against the live sandbox MCP server
 import { convertToModelMessages, streamText, stepCountIs } from 'ai'
 import type { UIMessage } from 'ai'
 import { z } from 'zod'
@@ -15,6 +16,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 
 export const maxDuration = 120
 
+// Validate shape of incoming chat messages — caps array sizes to bound token cost
 const bodySchema = z.object({
   integrationId: z.string().uuid(),
   sandboxUrl: z.string().url().startsWith('https://').nullish(),
@@ -68,6 +70,7 @@ export async function POST(req: Request) {
       return errors.notFound('Config not cached.')
     }
 
+    // Build system prompt context — source override allows sandbox edits to persist into chat
     const { sourceCode: generatedSource } = bundleServer(config)
     const override = await sourceOverride.get(integrationId)
     const sourceCode = override ?? generatedSource
@@ -89,6 +92,7 @@ export async function POST(req: Request) {
       callToolDescription,
     })
 
+    // Stream Sonnet response with tool use — stepCountIs(10) caps reasoning loops to control cost
     const result = streamText({
       model: chatModel(),
       providerOptions: {
@@ -110,7 +114,9 @@ export async function POST(req: Request) {
         ...await convertToModelMessages(messages as unknown as UIMessage[]),
       ],
       stopWhen: stepCountIs(10),
+      // Three tools let the model inspect and call the live sandbox MCP server during chat
       tools: {
+        // Tool 1: List all available MCP tools — reads from live sandbox if available, else cached config
         listTools: {
           description: 'List all MCP tools available in this generated server with their names, titles, and descriptions',
           inputSchema: z.object({}),
@@ -147,6 +153,7 @@ export async function POST(req: Request) {
           },
         },
 
+        // Tool 2: Read full definition of a single tool — input schema, HTTP mapping, auth requirements
         readTool: {
           description: 'Get the full definition of a specific MCP tool including its input schema, HTTP mapping, and auth requirements',
           inputSchema: z.object({
@@ -195,6 +202,7 @@ export async function POST(req: Request) {
           },
         },
 
+        // Tool 3: Execute a tool against the live sandbox — real API calls, not mocks
         callTool: {
           description: 'Call a specific MCP tool against the live sandbox with provided arguments and return the real API response',
           inputSchema: z.object({
@@ -223,6 +231,7 @@ export async function POST(req: Request) {
       },
     })
 
+    // Stream response to the browser as UI message events
     return result.toUIMessageStreamResponse({
       onError: (err) => {
         console.error('Chat stream error:', err instanceof Error ? err.message : 'unknown')

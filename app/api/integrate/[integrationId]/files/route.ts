@@ -1,3 +1,4 @@
+// Returns the generated MCP server file bundle — applies any user source override to route.ts
 import { getIntegration } from '@/lib/storage/neon'
 import { mcpConfigCache, sourceOverride } from '@/lib/storage/redis'
 import { bundleServer } from '@/lib/mcp/bundle'
@@ -32,6 +33,7 @@ export async function GET(
 
     const { files } = bundleServer(config)
 
+    // If the user edited route.ts in the code viewer, swap in their version
     const override = await sourceOverride.get(integrationId)
 
     if (override) {

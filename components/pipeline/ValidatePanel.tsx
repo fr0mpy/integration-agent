@@ -1,3 +1,4 @@
+// Preview MCP tab — code viewer + chat panel + on-demand sandbox lifecycle + build log
 'use client'
 
 import { useCallback } from 'react'
@@ -44,9 +45,10 @@ export function ValidatePanel({
     active && validateStatus === 'complete',
   )
 
-  // Use pipeline sandbox URL while pipeline is running, otherwise use on-demand sandbox
+  // Prefer the pipeline sandbox while it's alive; fall back to on-demand spin-up
   const sandboxUrl = pipelineSandboxUrl ?? sandbox.sandboxUrl
 
+  // Persist edited route.ts to the source override store so chat and deploy use the user's version
   const handleCodeSave = useCallback(async (source: string) => {
     await fetch(`/api/integrate/${integrationId}/source`, {
       method: 'PUT',

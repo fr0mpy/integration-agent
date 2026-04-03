@@ -1,3 +1,4 @@
+// Interactive chat panel — Sonnet with tool use against the live sandbox MCP server
 'use client'
 
 import { useRef, useEffect, useState } from 'react'

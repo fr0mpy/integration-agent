@@ -1,3 +1,4 @@
+// Assembles the full deploy payload for a generated MCP server — templates cached at module load
 import { readFileSync } from 'fs'
 import { join } from 'path'
 import type { MCPServerConfig } from './types'
@@ -63,6 +64,7 @@ export function bundleServer(config: MCPServerConfig): BundleResult {
     2,
   )
 
+  // File layout mirrors a minimal Next.js project — deployed as its own Vercel project
   const files: BundledFile[] = [
     { file: 'app/[transport]/route.ts', data: sourceCode },
     { file: 'app/layout.tsx', data: 'export default function RootLayout({ children }: { children: React.ReactNode }) {\n  return <html><body>{children}</body></html>\n}\n' },

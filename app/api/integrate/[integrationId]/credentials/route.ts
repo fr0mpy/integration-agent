@@ -1,3 +1,4 @@
+// Credential storage — GET checks existence, POST encrypts with AES-256-GCM and persists to Postgres
 import { z } from 'zod'
 import { getIntegration, hasCredentials, saveCredentials } from '@/lib/storage/neon'
 import { encrypt } from '@/lib/crypto'
@@ -44,6 +45,7 @@ export async function POST(
     return errors.badRequest('Invalid request.')
   }
 
+  // Wrap credential in JSON envelope and encrypt — stored as a single opaque blob in Postgres
   const encryptedValue = encrypt(JSON.stringify({ apiKey: parsed.data.credential }))
   const ok = await saveCredentials(integrationId, encryptedValue)
 

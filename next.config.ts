@@ -1,9 +1,11 @@
+// Next.js config — WDK integration, security headers, build version stamping, template bundling
 import type { NextConfig } from 'next'
 import { withWorkflow } from 'workflow/next'
 import { execSync } from 'child_process'
 
 const isDev = process.env.NODE_ENV === 'development'
 
+// Stamp every build with a git SHA + timestamp — used in log lines for deploy traceability
 let gitSha = 'unknown'
 try {
   gitSha = execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim()
@@ -14,6 +16,7 @@ const nextConfig: NextConfig = {
     BUILD_VERSION: `${gitSha}-${Date.now()}`,
   },
   cacheComponents: true,
+  // Bundle the generated-server-template directory into API route lambdas so codegen can read it at runtime
   outputFileTracingIncludes: {
     '/api/*': ['./generated-server-template/**/*'],
   },
@@ -33,4 +36,5 @@ const nextConfig: NextConfig = {
   },
 }
 
+// withWorkflow wraps the config to enable WDK's durable execution runtime for API routes
 export default withWorkflow(nextConfig)

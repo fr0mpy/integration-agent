@@ -1,3 +1,4 @@
+// Pipeline entry point — validates spec URL, checks cache, acquires lock, starts WDK workflow
 import { createHash, randomUUID } from 'crypto'
 import { z } from 'zod'
 import { Ratelimit } from '@upstash/ratelimit'
@@ -9,6 +10,7 @@ import { revalidateTag } from 'next/cache'
 import { start } from 'workflow/api'
 import { synthesisePipeline } from '@/lib/pipeline'
 
+// Sliding window rate limit — 10 requests/min per IP, fail-closed if Redis is down
 const ratelimit = new Ratelimit({
   redis,
   limiter: Ratelimit.slidingWindow(10, '1 m'),
@@ -43,6 +45,7 @@ export async function POST(req: Request) {
     // Always fetch — required to detect whether spec content has changed since last synthesis.
     const spec = await validateAndFetchSpec(specUrl)
 
+    // Content-hash the spec — drives cache lookup and deduplication across different URLs
     const specHash = createHash('sha256')
       .update(JSON.stringify(spec))
       .digest('hex')

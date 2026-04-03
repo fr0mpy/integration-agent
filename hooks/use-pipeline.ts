@@ -1,3 +1,4 @@
+// SSE client hook — streams pipeline events in real-time, reconnects with lastIndex, falls back to DB polling
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -122,11 +123,12 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
     fetchCached()
   }, [integrationId, cached])
 
-  const lastIndexRef = useRef(-1)
-  const retriesRef = useRef(0)
-  const receivedEventRef = useRef(false)
-  const terminalRef = useRef(false)
-  const fallbackRef = useRef(false)
+  // SSE connection state — refs avoid re-renders and persist across reconnections
+  const lastIndexRef = useRef(-1)       // tracks last received event index for reconnect offset
+  const retriesRef = useRef(0)          // exponential backoff counter
+  const receivedEventRef = useRef(false) // distinguishes timeout from slow start
+  const terminalRef = useRef(false)     // stops reconnection after pipeline completes or fails
+  const fallbackRef = useRef(false)     // triggers DB polling when SSE dies during deploy
 
   const handleEvent = useCallback((event: PipelineEvent) => {
     receivedEventRef.current = true
@@ -257,6 +259,7 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
     let eventSource: EventSource | null = null
     let timeoutId: ReturnType<typeof setTimeout> | null = null
 
+    // Open SSE connection — includes lastIndex param on reconnect so server only sends unseen events
     function connect() {
       const url = lastIndexRef.current >= 0
         ? `/api/pipeline/${integrationId}?lastIndex=${lastIndexRef.current}`
@@ -301,6 +304,7 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
         }
       }
 
+      // On disconnect: exponential backoff reconnect, or switch to DB polling during deploy
       eventSource.onerror = () => {
         eventSource?.close()
 
@@ -385,6 +389,7 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
     return () => clearInterval(intervalId)
   }, [integrationId, cached, state.stageStatus])
 
+  // Optimistic UI update — marks a stage as running before the SSE event arrives
   const setStageRunning = useCallback((stage: PipelineStage) => {
     setState((prev) => ({
       ...prev,

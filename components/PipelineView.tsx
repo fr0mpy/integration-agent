@@ -1,3 +1,4 @@
+// Main pipeline UI — 5-stage tabbed view with URL-synced navigation, SSE state, and tool exclusion
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -23,6 +24,7 @@ import { BuildTriggerButton } from '@/components/pipeline/BuildTriggerButton';
 import { cn } from '@/lib/utils';
 import type { PipelineStage } from '@/lib/pipeline/events';
 
+// Sort tools by REST convention — GETs first, DELETEs last
 const METHOD_ORDER: Record<string, number> = {
   GET: 0,
   POST: 1,
@@ -84,6 +86,7 @@ export function PipelineView({
     });
   }, []);
 
+  // Group tools by first path segment (e.g. /pet, /store) and sort by path then method
   const toolGroups = useMemo(() => {
     const sorted = [...state.tools].sort((a, b) => {
       const pathCmp = a.httpPath.localeCompare(b.httpPath);

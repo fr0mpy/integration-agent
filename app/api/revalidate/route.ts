@@ -1,3 +1,4 @@
+// On-demand ISR revalidation — called externally with a Bearer secret to refresh the integration list cache
 import { revalidateTag } from 'next/cache'
 import { success, errors } from '@/lib/api/response'
 

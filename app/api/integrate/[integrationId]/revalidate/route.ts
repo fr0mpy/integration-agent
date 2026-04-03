@@ -1,3 +1,4 @@
+// Live credential validation — decrypts the user's API key, calls up to 3 tools via the sandbox, and sniffs HTTP status
 import { getIntegration, getCredentials, updateIntegration } from '@/lib/storage/neon'
 import { mcpConfigCache } from '@/lib/storage/redis'
 import { decrypt } from '@/lib/crypto'
@@ -77,11 +78,10 @@ export async function POST(
     return errors.internal()
   }
 
-  // Pick up to 3 representative tools — prefer GET tools with all-optional params
+  // Pick up to 3 representative tools — prefer safe GETs with few required params to minimise side effects
   const candidates = config.tools
     .filter((t) => t.authRequired)
     .sort((a, b) => {
-      // Prefer GET, then fewer required params
       const methodScore = (m: string) => ({ GET: 0, DELETE: 1, POST: 2, PUT: 3, PATCH: 4 }[m] ?? 5)
       const requiredScore = (t: typeof a) => t.inputSchema.required.length
       return methodScore(a.httpMethod) - methodScore(b.httpMethod) || requiredScore(a) - requiredScore(b)
@@ -116,6 +116,7 @@ export async function POST(
     return errors.serviceUnavailable('Sandbox unreachable — VM may have expired.')
   }
 
+  // Call each candidate tool with placeholder args and inspect the HTTP status to verify the credential works
   const results: RevalidateResult[] = []
 
   try {
@@ -164,6 +165,7 @@ export async function POST(
     await client.close().catch((err: unknown) => console.warn('MCP client close failed:', err instanceof Error ? err.message : 'unknown'))
   }
 
+  // If any tool returned a non-error status, the credential is valid — persist the timestamp
   const anyOk = results.some((r) => r.ok)
   const liveValidatedAt = new Date().toISOString()
 

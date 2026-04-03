@@ -1,9 +1,11 @@
+// Spec URL input form — submits to /api/synthesise and redirects to the pipeline detail page
 'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ChevronDown } from 'lucide-react'
 
+// Pre-loaded example spec URLs for the dropdown — only Petstore is active for demo
 const EXAMPLE_SPECS = [
   { label: 'Petstore',   url: 'https://petstore3.swagger.io/api/v3/openapi.json' },
   // { label: 'Resend',     url: 'https://raw.githubusercontent.com/resend/resend-openapi/main/resend.yaml' },
