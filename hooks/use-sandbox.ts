@@ -72,6 +72,21 @@ export function useSandbox(
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
+        // 503 = race condition (sandbox URL not yet persisted) — retry once after a brief wait
+        if (res.status === 503 && !controller.signal.aborted) {
+          await new Promise((r) => setTimeout(r, 2000))
+          const retry = await fetch(`/api/integrate/${integrationId}/sandbox`, {
+            method: 'POST',
+            signal: controller.signal,
+          })
+          if (retry.ok) {
+            const retryData = await retry.json() as SandboxReadyEvent
+            setSandboxUrl(retryData.sandboxUrl)
+            setBuildLog(['Sandbox reconnected after brief wait'])
+            setIsSpinning(false)
+            return
+          }
+        }
         throw new Error(data.error ?? `Sandbox request failed (${res.status})`)
       }
 
@@ -129,7 +144,16 @@ export function useSandbox(
     }
   }, [integrationId])
 
-  // Auto-spin when tab becomes active
+  // Sync with pipeline sandbox URL — when SSE delivers the URL after mount,
+  // reflect it immediately so chat and UI have the live sandbox.
+  useEffect(() => {
+    if (initialSandboxUrl) {
+      setSandboxUrl(initialSandboxUrl)
+      setError(null)
+    }
+  }, [initialSandboxUrl])
+
+  // Auto-spin when tab becomes active — but skip if pipeline sandbox is available
   useEffect(() => {
     if (!active) {
       hasTriedRef.current = false
@@ -140,12 +164,18 @@ export function useSandbox(
     if (hasTriedRef.current) return
     hasTriedRef.current = true
 
+    // Pipeline sandbox still alive — use it directly, don't spin up a new one
+    if (initialSandboxUrl) {
+      setSandboxUrl(initialSandboxUrl)
+      return
+    }
+
     spinUp()
 
     return () => {
       abortRef.current?.abort()
     }
-  }, [active, spinUp])
+  }, [active, initialSandboxUrl, spinUp])
 
   return { sandboxUrl, isSpinning, buildLog, error, spinUp }
 }

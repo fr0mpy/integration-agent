@@ -134,7 +134,10 @@ async function cacheDiscovery(specHash: string, discovered: DiscoveryResult) {
 async function cacheMcpConfig(specHash: string, config: MCPServerConfig) {
   'use step';
   const { mcpConfigCache } = await import('../storage/redis');
-  await mcpConfigCache.set(specHash, config);
+  const result = await mcpConfigCache.set(specHash, config);
+  if (result === null) {
+    console.error(`cacheMcpConfig: Redis write returned null for specHash=${specHash.slice(0, 8)} — config may not be cached`);
+  }
 }
 
 // Writes the URL→hash index after sandbox validation passes; acts as the commit signal for the fast path.
@@ -151,13 +154,11 @@ async function setIntegrationStatus(integrationId: string, status: string) {
   await updateIntegration(integrationId, { status });
 }
 
-// Saves sandbox ID, URL, and verified tool list to the integration row after the live MCP test passes.
+// Saves verified tool list to the integration row after the live MCP test passes.
 async function persistValidation(integrationId: string, result: SandboxResult) {
   'use step';
   const { updateIntegration } = await import('../storage/neon');
   await updateIntegration(integrationId, {
-    sandbox_id: result.sandboxId,
-    sandbox_url: result.sandboxUrl,
     verified_tools: result.verifiedTools,
     validated_at: new Date().toISOString(),
   });

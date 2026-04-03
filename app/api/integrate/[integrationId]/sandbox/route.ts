@@ -1,11 +1,11 @@
 import { Sandbox } from '@vercel/sandbox'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { getIntegration, updateIntegration } from '@/lib/storage/neon'
+import { getIntegration } from '@/lib/storage/neon'
 import { mcpConfigCache, sourceOverride } from '@/lib/storage/redis'
 import { bundleServer } from '@/lib/mcp/bundle'
-import { isValidUUID, validateSandboxUrl, ValidationError } from '@/lib/validation'
-import { success, errors } from '@/lib/api/response'
+import { isValidUUID } from '@/lib/validation'
+import { errors } from '@/lib/api/response'
 import type { MCPServerConfig } from '@/lib/mcp/types'
 
 export const maxDuration = 300
@@ -17,7 +17,7 @@ const SERVER_WARMUP_MS = 3_000
  * POST /api/integrate/[integrationId]/sandbox
  *
  * Spins up a fresh sandbox VM from the cached config and streams build logs
- * as ndjson lines. If the existing sandbox is still alive, returns it immediately.
+ * as ndjson lines.
  */
 export async function POST(
   _req: Request,
@@ -38,31 +38,12 @@ export async function POST(
   const config = await mcpConfigCache.get(integration.spec_hash) as MCPServerConfig | null
 
   if (!config) {
+    // If the pipeline is still running (status=validating), the client likely hit this
+    // endpoint before persistValidation completed — signal a retryable error.
+    if (integration.status === 'validating') {
+      return errors.serviceUnavailable('Sandbox URL not yet persisted. Retry in a moment.')
+    }
     return errors.notFound('Config not cached. Re-run the pipeline first.')
-  }
-
-  // Check if existing sandbox is still alive
-  if (integration.sandbox_url) {
-    try {
-      await validateSandboxUrl(integration.sandbox_url as string)
-    } catch (err) {
-      return errors.badRequest(err instanceof ValidationError ? err.message : 'Invalid sandbox URL.')
-    }
-
-    try {
-      const client = new Client({ name: 'integration-agent-health', version: '1.0.0' })
-      const transport = new StreamableHTTPClientTransport(new URL(`${integration.sandbox_url}/mcp`))
-      await client.connect(transport)
-      const result = await client.listTools()
-      await client.close()
-
-      if (result.tools.length > 0) {
-        // Sandbox still alive — return it
-        return success({ type: 'ready', sandboxUrl: integration.sandbox_url, sandboxId: integration.sandbox_id })
-      }
-    } catch (err) {
-      console.warn('Sandbox health check failed:', err instanceof Error ? err.message : 'unknown')
-    }
   }
 
   // Regenerate bundle from cached config (with any source overrides)
@@ -178,12 +159,6 @@ export async function POST(
 
         send({ type: 'log', message: `${returnedNames.length}/${expectedNames.length} tools verified` })
         send({ type: 'log', message: 'Sandbox live — isolated Firecracker VM' })
-
-        // Persist new sandbox URL to DB
-        await updateIntegration(integrationId, {
-          sandbox_url: sandboxUrl,
-          sandbox_id: sandbox.sandboxId,
-        })
 
         send({ type: 'ready', sandboxUrl, sandboxId: sandbox.sandboxId })
         controller.close()

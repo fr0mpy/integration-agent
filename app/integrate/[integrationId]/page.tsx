@@ -37,7 +37,7 @@ export default async function IntegrationPage({
       <PipelineView
         integrationId={integrationId}
         cached={cached}
-        initialSandboxUrl={integration.sandbox_url ?? null}
+        initialSandboxUrl={null}
         initialVerifiedTools={integration.verified_tools ?? []}
         initialValidatedAt={integration.validated_at ?? null}
         authMethod={authMethod}
