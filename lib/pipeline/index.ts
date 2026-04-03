@@ -260,13 +260,13 @@ async function runFindDeployment(
   return findDeployment(vercelProjectId);
 }
 
-// Single Vercel API call to read the current build state for a known deployment UID; used in the polling loop.
-async function runCheckDeploymentStatus(
-  deploymentUid: string,
-): Promise<DeploymentInfo> {
+// Pings the project's production URL to check if the deployment is live.
+async function runPingDeployment(
+  projectName: string,
+): Promise<boolean> {
   "use step";
-  const { checkDeploymentStatus } = await import("./deploy");
-  return checkDeploymentStatus(deploymentUid);
+  const { pingDeployment } = await import("./deploy");
+  return pingDeployment(projectName);
 }
 
 // Saves the live MCP URL and deployment ID to the integration row and marks status as LIVE.
@@ -561,6 +561,22 @@ export async function synthesisePipeline(
     // Persist PR info immediately so the UI can show the link even if the user refreshes
     await persistPRInfo(integrationId, prResult);
 
+    // Create the Vercel project BEFORE the merge wait so that Vercel's GitHub
+    // integration is already listening when the merge push event arrives.
+    const projectResult = await runCreateVercelProject(
+      monorepo,
+      integrationId,
+      discovered.apiName,
+    );
+
+    for (const line of projectResult.setupLogs) {
+      await emitEvent(
+        createEvent("deploy-mcp", "building", {
+          buildLog: line,
+        } satisfies DeployEventData),
+      );
+    }
+
     await emitEvent(
       createEvent("deploy-mcp", "running", {
         step: "pr-open",
@@ -667,40 +683,30 @@ export async function synthesisePipeline(
       } satisfies DeployEventData),
     );
 
-    const projectResult = await runCreateVercelProject(
-      monorepo,
-      integrationId,
-      discovered.apiName,
-    );
-
-    for (const line of projectResult.setupLogs) {
-      await emitEvent(
-        createEvent("deploy-mcp", "building", {
-          buildLog: line,
-        } satisfies DeployEventData),
-      );
-    }
-
-    // Poll for deployment to appear — emit progress events each iteration to keep SSE alive
+    // Ping the project's production URL until it responds — replaces the
+    // two-phase getDeployments/checkDeploymentStatus polling that could miss
+    // deployments due to API timing issues.
+    const mcpUrl = `https://${projectResult.projectName}.vercel.app`;
     await emitEvent(
       createEvent("deploy-mcp", "building", {
-        buildLog: "Waiting for Vercel to queue a deployment...",
+        buildLog: "Waiting for deployment to go live...",
       } satisfies DeployEventData),
     );
-    const APPEAR_TIMEOUT_MS = 5 * 60 * 1000;
-    const APPEAR_POLL_MS = 20_000;
-    const appearDeadline = Date.now() + APPEAR_TIMEOUT_MS;
-    let deployment: DeploymentInfo | null = null;
 
-    while (!deployment) {
-      if (Date.now() > appearDeadline) {
+    const PING_TIMEOUT_MS = 10 * 60 * 1000;
+    const PING_POLL_MS = 15_000;
+    const pingDeadline = Date.now() + PING_TIMEOUT_MS;
+    let live = false;
+
+    while (!live) {
+      if (Date.now() > pingDeadline) {
         throw new Error(
-          "No deployment appeared within 5 minutes — check the Vercel dashboard.",
+          "Deployment did not go live within 10 minutes — check the Vercel dashboard.",
         );
       }
-      await sleep(APPEAR_POLL_MS);
-      deployment = await runFindDeployment(projectResult.vercelProjectId);
-      if (!deployment) {
+      await sleep(PING_POLL_MS);
+      live = await runPingDeployment(projectResult.projectName);
+      if (!live) {
         await emitEvent(
           createEvent("deploy-mcp", "building", {
             buildLog: "Still waiting for deployment...",
@@ -711,46 +717,17 @@ export async function synthesisePipeline(
 
     await emitEvent(
       createEvent("deploy-mcp", "building", {
-        buildLog: `Deployment found: ${deployment.uid} (state: ${deployment.readyState})`,
-      } satisfies DeployEventData),
-    );
-
-    // Poll until deployment reaches READY or ERROR — emit status each iteration
-    const BUILD_TIMEOUT_MS = 10 * 60 * 1000;
-    const buildDeadline = Date.now() + BUILD_TIMEOUT_MS;
-
-    while (
-      deployment.readyState !== "READY" &&
-      deployment.readyState !== "ERROR"
-    ) {
-      if (Date.now() > buildDeadline) {
-        throw new Error("Vercel deployment timed out after 10 minutes.");
-      }
-      await sleep(5_000);
-      deployment = await runCheckDeploymentStatus(deployment.uid);
-      await emitEvent(
-        createEvent("deploy-mcp", "building", {
-          buildLog: `Building... (${deployment.readyState})`,
-        } satisfies DeployEventData),
-      );
-    }
-
-    if (deployment.readyState === "ERROR") {
-      throw new Error(
-        "Vercel deployment failed — check the Vercel dashboard for build logs.",
-      );
-    }
-
-    await emitEvent(
-      createEvent("deploy-mcp", "building", {
         buildLog: "✓ Deployment READY",
       } satisfies DeployEventData),
     );
 
+    // Best-effort: grab the deployment UID for record-keeping
+    const deployment = await runFindDeployment(projectResult.vercelProjectId);
+
     const vercelResult: VercelDeployResult = {
       vercelProjectId: projectResult.vercelProjectId,
-      deploymentId: deployment.uid,
-      mcpUrl: `https://${deployment.url}`,
+      deploymentId: deployment?.uid ?? "",
+      mcpUrl,
       buildLogs: [],
     };
 

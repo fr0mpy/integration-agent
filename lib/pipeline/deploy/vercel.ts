@@ -7,6 +7,7 @@ const _fetch = globalThis.fetch
 
 export interface VercelProjectResult {
   vercelProjectId: string
+  projectName: string
   setupLogs: string[]
 }
 
@@ -189,7 +190,7 @@ export async function createVercelProject(
     logs.push('Environment variables set.')
   }
 
-  return { vercelProjectId: projectId, setupLogs: logs }
+  return { vercelProjectId: projectId, projectName, setupLogs: logs }
 }
 
 export interface DeploymentInfo {
@@ -238,5 +239,21 @@ export async function checkDeploymentStatus(deploymentUid: string): Promise<Depl
     uid: deploymentUid,
     readyState: refreshed.readyState ?? 'BUILDING',
     url: refreshed.url ?? '',
+  }
+}
+
+/**
+ * Ping the project's production URL to check if the deployment is live.
+ * Returns true if the server responds with a non-5xx status.
+ */
+export async function pingDeployment(projectName: string): Promise<boolean> {
+  try {
+    const res = await _fetch(`https://${projectName}.vercel.app`, {
+      method: 'HEAD',
+      signal: AbortSignal.timeout(10_000),
+    })
+    return res.status < 500
+  } catch {
+    return false
   }
 }
