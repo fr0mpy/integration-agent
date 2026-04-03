@@ -25,12 +25,17 @@ export function ChatPanel({ integrationId, sandboxUrl, validatedAt: _validatedAt
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
 
+  // useChat ignores transport prop changes after mount (transport is readonly in AbstractChat).
+  // Keep sandboxUrl in a ref so the body function always sends the current value at request time.
+  const sandboxUrlRef = useRef<string | null>(sandboxUrl)
+  sandboxUrlRef.current = sandboxUrl
+
   const transport = useMemo(
     () => new DefaultChatTransport({
       api: '/api/validate/chat',
-      body: { integrationId, sandboxUrl },
+      body: () => ({ integrationId, sandboxUrl: sandboxUrlRef.current }),
     }),
-    [integrationId, sandboxUrl],
+    [integrationId],
   )
 
   const { messages, sendMessage, status } = useChat({

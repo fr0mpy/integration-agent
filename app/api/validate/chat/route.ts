@@ -100,6 +100,26 @@ export async function POST(req: Request) {
           description: 'List all MCP tools available in this generated server with their names, titles, and descriptions',
           inputSchema: z.object({}),
           execute: async () => {
+            // Sandbox is the source of truth during preview — read tools fresh from the live MCP server
+            if (sandboxUrl) {
+              const client = new Client({ name: 'integration-agent-chat', version: '1.0.0' })
+              const transport = new StreamableHTTPClientTransport(new URL(`${sandboxUrl}/mcp`))
+              try {
+                await client.connect(transport)
+                const result = await client.listTools()
+                return result.tools.map((t) => ({
+                  name: t.name,
+                  description: t.description,
+                  inputSchema: t.inputSchema,
+                }))
+              } catch (err) {
+                return { error: `Sandbox unreachable: ${err instanceof Error ? err.message : String(err)}` }
+              } finally {
+                await client.close().catch(() => {})
+              }
+            }
+
+            // No sandbox — fall back to cached config (deployed MCP reads from Redis)
             return config.tools.map((t) => ({
               name: t.name,
               title: t.title,
@@ -114,15 +134,34 @@ export async function POST(req: Request) {
         readTool: {
           description: 'Get the full definition of a specific MCP tool including its input schema, HTTP mapping, and auth requirements',
           inputSchema: z.object({
-            toolName: z.string().describe('The exact tool name (e.g. petstore_listPets)'),
+            toolName: z.string().describe('The exact tool name (e.g. get_pet_by_id)'),
           }),
           execute: async ({ toolName }) => {
-            const tool = config.tools.find((t) => t.name === toolName)
+            // Sandbox is the source of truth during preview
+            if (sandboxUrl) {
+              const client = new Client({ name: 'integration-agent-chat', version: '1.0.0' })
+              const transport = new StreamableHTTPClientTransport(new URL(`${sandboxUrl}/mcp`))
+              try {
+                await client.connect(transport)
+                const result = await client.listTools()
+                const tool = result.tools.find((t) => t.name === toolName)
+                if (!tool) {
+                  const available = result.tools.map((t) => t.name).join(', ')
+                  return { error: `Tool "${toolName}" not found in sandbox. Available: ${available}` }
+                }
+                return { name: tool.name, description: tool.description, inputSchema: tool.inputSchema }
+              } catch (err) {
+                return { error: `Sandbox unreachable: ${err instanceof Error ? err.message : String(err)}` }
+              } finally {
+                await client.close().catch(() => {})
+              }
+            }
 
+            // No sandbox — fall back to cached config
+            const tool = config.tools.find((t) => t.name === toolName)
             if (!tool) {
               return { error: `Tool "${toolName}" not found. Available: ${config.tools.map((t) => t.name).join(', ')}` }
             }
-
             return {
               name: tool.name,
               title: tool.title,
@@ -144,12 +183,6 @@ export async function POST(req: Request) {
           execute: async ({ toolName, args }) => {
             if (!sandboxUrl) {
               return { error: 'No sandbox URL available. The sandbox runs only during pipeline validation. Re-run the pipeline to get a live sandbox.' }
-            }
-
-            const validNames = config.tools.map((t) => t.name)
-
-            if (!validNames.includes(toolName)) {
-              return { error: `Tool "${toolName}" not found. Available: ${validNames.join(', ')}` }
             }
 
             const client = new Client({ name: 'integration-agent-chat', version: '1.0.0' })
