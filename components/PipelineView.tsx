@@ -58,9 +58,6 @@ export function PipelineView({
   initialSandboxUrl = null,
   initialVerifiedTools = [],
   initialValidatedAt = null,
-  authMethod = null,
-  initialHasCredentials = false,
-  initialLiveValidatedAt = null,
   initialPrUrl = null,
   initialMcpUrl = null,
   initialRepoUrl = null,
@@ -70,9 +67,6 @@ export function PipelineView({
   initialSandboxUrl?: string | null;
   initialVerifiedTools?: string[];
   initialValidatedAt?: string | null;
-  authMethod?: string | null;
-  initialHasCredentials?: boolean;
-  initialLiveValidatedAt?: string | null;
   initialPrUrl?: string | null;
   initialMcpUrl?: string | null;
   initialRepoUrl?: string | null;
@@ -319,9 +313,6 @@ export function PipelineView({
             }
             validatedAt={state.sandboxUrl ? null : initialValidatedAt}
             validateStatus={state.stageStatus['preview-mcp']}
-            authMethod={authMethod}
-            initialHasCredentials={initialHasCredentials}
-            initialLiveValidatedAt={initialLiveValidatedAt}
             buildRetrying={state.buildRetrying}
             buildErrors={state.buildErrors}
             active={activeTab === 'preview-mcp'}
