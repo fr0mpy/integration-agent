@@ -16,9 +16,10 @@ async function main() {
     const world = getWorld()
     let cancelled = 0
     let cursor: string | undefined
+    let hasMore = true
 
     // Paginate through all runs and cancel any that are still active
-    do {
+    while (hasMore) {
       const page = await world.runs.list({
         pagination: cursor ? { cursor, limit: 50 } : { limit: 50 },
       })
@@ -33,8 +34,9 @@ async function main() {
         }
       }
 
-      cursor = page.pagination?.cursor ?? undefined
-    } while (cursor)
+      cursor = page.cursor ?? undefined
+      hasMore = !!page.hasMore && !!cursor
+    }
 
     console.log(`Cancelled ${cancelled} active WDK workflow run(s)`)
   } catch (err) {
