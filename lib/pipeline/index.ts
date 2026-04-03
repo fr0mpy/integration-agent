@@ -136,7 +136,7 @@ async function cacheMcpConfig(specHash: string, config: MCPServerConfig) {
   const { mcpConfigCache } = await import('../storage/redis');
   const result = await mcpConfigCache.set(specHash, config);
   if (result === null) {
-    console.error(`cacheMcpConfig: Redis write returned null for specHash=${specHash.slice(0, 8)} — config may not be cached`);
+    throw new Error(`Failed to cache MCP config for specHash=${specHash.slice(0, 8)} — Redis write returned null`);
   }
 }
 

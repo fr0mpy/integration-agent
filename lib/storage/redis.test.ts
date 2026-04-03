@@ -36,22 +36,22 @@ describe('redis storage', () => {
 
   it('mcpConfigCache.get returns null and logs on failure', async () => {
     const { redis, mcpConfigCache } = await loadRedis()
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.mocked(redis.get).mockRejectedValueOnce(new Error('connection refused'))
 
     const result = await mcpConfigCache.get('fail')
     expect(result).toBeNull()
-    expect(warnSpy).toHaveBeenCalledWith('Redis mcpConfigCache read failed:', 'connection refused')
+    expect(warnSpy).toHaveBeenCalledWith('Redis mcpConfigCache read ERROR:', 'connection refused')
     warnSpy.mockRestore()
   })
 
   it('mcpConfigCache.set swallows errors', async () => {
     const { redis, mcpConfigCache } = await loadRedis()
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.mocked(redis.set).mockRejectedValueOnce(new Error('write failed'))
 
     await expect(mcpConfigCache.set('key', { data: true })).resolves.toBeNull()
-    expect(warnSpy).toHaveBeenCalledWith('Redis mcpConfigCache write failed:', 'write failed')
+    expect(warnSpy).toHaveBeenCalledWith('Redis mcpConfigCache write ERROR:', 'write failed')
     warnSpy.mockRestore()
   })
 
@@ -77,23 +77,23 @@ describe('redis storage', () => {
 
   it('specUrlIndex.getHash swallows errors', async () => {
     const { redis, specUrlIndex } = await loadRedis()
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.mocked(redis.get).mockRejectedValueOnce(new Error('timeout'))
 
     const result = await specUrlIndex.getHash('https://fail.com/spec.json')
 
     expect(result).toBeNull()
-    expect(warnSpy).toHaveBeenCalledWith('Redis specUrlIndex read failed:', 'timeout')
+    expect(warnSpy).toHaveBeenCalledWith('Redis specUrlIndex read ERROR:', 'timeout')
     warnSpy.mockRestore()
   })
 
   it('specUrlIndex.setHash swallows errors', async () => {
     const { redis, specUrlIndex } = await loadRedis()
-    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const warnSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.mocked(redis.set).mockRejectedValueOnce(new Error('write failed'))
 
     await expect(specUrlIndex.setHash('https://fail.com/spec.json', 'hash')).resolves.toBeNull()
-    expect(warnSpy).toHaveBeenCalledWith('Redis specUrlIndex write failed:', 'write failed')
+    expect(warnSpy).toHaveBeenCalledWith('Redis specUrlIndex write ERROR:', 'write failed')
     warnSpy.mockRestore()
   })
 })

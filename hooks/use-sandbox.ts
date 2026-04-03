@@ -52,6 +52,7 @@ export function useSandbox(
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const hasTriedRef = useRef(false)
+  const currentUrlRef = useRef<string | null>(initialSandboxUrl)
 
   const spinUp = useCallback(async () => {
     // Abort any in-flight request
@@ -144,6 +145,11 @@ export function useSandbox(
     }
   }, [integrationId])
 
+  // Keep ref in sync so the delayed spinUp check can read the latest value
+  useEffect(() => {
+    currentUrlRef.current = sandboxUrl
+  }, [sandboxUrl])
+
   // Sync with pipeline sandbox URL — when SSE delivers the URL after mount,
   // reflect it immediately so chat and UI have the live sandbox.
   useEffect(() => {
@@ -153,26 +159,31 @@ export function useSandbox(
     }
   }, [initialSandboxUrl])
 
-  // Auto-spin when tab becomes active — but skip if pipeline sandbox is available
+  // Auto-spin when tab becomes active — but skip if pipeline sandbox is available.
+  // Uses a brief delay before spinning up to let SSE deliver the pipeline URL first.
   useEffect(() => {
     if (!active) {
       hasTriedRef.current = false
       return
     }
 
-    // Only auto-spin once per tab activation
     if (hasTriedRef.current) return
     hasTriedRef.current = true
 
-    // Pipeline sandbox still alive — use it directly, don't spin up a new one
     if (initialSandboxUrl) {
       setSandboxUrl(initialSandboxUrl)
       return
     }
 
-    spinUp()
+    // Delay: give SSE time to deliver the pipeline sandbox URL before falling back to on-demand spin-up
+    const timer = setTimeout(() => {
+      if (!currentUrlRef.current) {
+        spinUp()
+      }
+    }, 2000)
 
     return () => {
+      clearTimeout(timer)
       abortRef.current?.abort()
     }
   }, [active, initialSandboxUrl, spinUp])

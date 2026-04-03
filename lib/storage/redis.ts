@@ -21,7 +21,7 @@ async function safeRedis<T>(label: string, fn: () => Promise<T>): Promise<T | nu
   try {
     return await fn()
   } catch (err) {
-    console.warn(`Redis ${label} failed:`, err instanceof Error ? err.message : 'unknown')
+    console.error(`Redis ${label} ERROR:`, err instanceof Error ? err.message : String(err))
     return null
   }
 }
@@ -55,9 +55,16 @@ export const mcpConfigCache = {
 
   // Persists a validated config keyed by spec hash; only written after sandbox validation passes.
   set(specHash: string, config: unknown) {
-    return safeRedis('mcpConfigCache write', () =>
-      redis.set(`cache:${synthesisPrompt.version}:${specHash}`, config, { ex: CACHE_TTL_SECONDS }),
-    )
+    return safeRedis('mcpConfigCache write', async () => {
+      const key = `cache:${synthesisPrompt.version}:${specHash}`
+      const result = await redis.set(key, config, { ex: CACHE_TTL_SECONDS })
+      const check = await redis.get(key)
+      if (!check) {
+        console.error(`mcpConfigCache: write-then-read FAILED for key=${key.slice(0, 30)}`)
+        return null
+      }
+      return result
+    })
   },
 }
 
