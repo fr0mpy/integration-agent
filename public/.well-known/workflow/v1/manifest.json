@@ -18,14 +18,23 @@
       }
     },
     "lib/pipeline/index.ts": {
-      "cacheResults": {
-        "stepId": "step//./lib/pipeline/index//cacheResults"
+      "cacheDiscovery": {
+        "stepId": "step//./lib/pipeline/index//cacheDiscovery"
+      },
+      "cacheMcpConfig": {
+        "stepId": "step//./lib/pipeline/index//cacheMcpConfig"
       },
       "checkDiscoveryCache": {
         "stepId": "step//./lib/pipeline/index//checkDiscoveryCache"
       },
       "checkPRStatus": {
         "stepId": "step//./lib/pipeline/index//checkPRStatus"
+      },
+      "clearSourceOverride": {
+        "stepId": "step//./lib/pipeline/index//clearSourceOverride"
+      },
+      "commitSpecUrlIndex": {
+        "stepId": "step//./lib/pipeline/index//commitSpecUrlIndex"
       },
       "emitEvent": {
         "stepId": "step//./lib/pipeline/index//emitEvent"
