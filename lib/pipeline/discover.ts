@@ -192,7 +192,7 @@ export async function enrichDiscovery(
  * Stage 1a — Discovery. Pure TypeScript, no LLM call.
  * Dereferences $ref pointers, then extracts the API surface.
  */
-export async function discoverEndpoints(spec: Record<string, unknown>): Promise<DiscoveryResult> {
+export async function discoverEndpoints(spec: Record<string, unknown>, specUrl?: string): Promise<DiscoveryResult> {
   const warnings: string[] = []
 
   let resolved = spec
@@ -212,7 +212,7 @@ export async function discoverEndpoints(spec: Record<string, unknown>): Promise<
   const apiName = String(info.title ?? 'Untitled API')
   const apiDescription = String(info.description ?? '')
 
-  const baseUrl = extractBaseUrl(resolved)
+  const baseUrl = extractBaseUrl(resolved, specUrl)
   const { authMethod, authHeader } = extractAuth(resolved)
 
   const endpoints: DiscoveredEndpoint[] = []
@@ -262,10 +262,17 @@ export async function discoverEndpoints(spec: Record<string, unknown>): Promise<
 }
 
 // Pulls the server URL from OpenAPI 3.x servers[0] or builds it from Swagger 2.x host + basePath.
-function extractBaseUrl(spec: Record<string, unknown>): string {
+// Resolves relative server URLs against specUrl (e.g. "/api/v3" → "https://petstore3.swagger.io/api/v3").
+function extractBaseUrl(spec: Record<string, unknown>, specUrl?: string): string {
   // OpenAPI 3.x
   const servers = spec.servers as Array<{ url?: string }> | undefined
-  if (servers?.[0]?.url) return servers[0].url
+  if (servers?.[0]?.url) {
+    const url = servers[0].url
+    if (specUrl && !url.startsWith('http://') && !url.startsWith('https://')) {
+      try { return new URL(url, specUrl).href } catch { /* fall through */ }
+    }
+    return url
+  }
 
   // Swagger 2.x
   const host = spec.host as string | undefined

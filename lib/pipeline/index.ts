@@ -59,10 +59,11 @@ async function checkDiscoveryCache(
 // Parses the OpenAPI spec and optionally enriches the endpoint list via AI; produces the structured input for synthesis.
 async function runDiscovery(
   spec: Record<string, unknown>,
+  specUrl: string,
 ): Promise<DiscoveryResult> {
   "use step";
   const { discoverEndpoints, enrichDiscovery } = await import("./discover");
-  const raw = await discoverEndpoints(spec);
+  const raw = await discoverEndpoints(spec, specUrl);
   return enrichDiscovery(raw);
 }
 
@@ -324,7 +325,7 @@ export async function synthesisePipeline(
     // Fast path: skip AI enrichment call if we've already processed this spec before
     await emitEvent(createEvent("discover-api", "running"));
     const cachedDiscovery = await checkDiscoveryCache(specHash);
-    const discovered = cachedDiscovery ?? (await runDiscovery(spec));
+    const discovered = cachedDiscovery ?? (await runDiscovery(spec, specUrl));
     if (!cachedDiscovery) await cacheDiscovery(specHash, discovered);
     await emitEvent(createEvent("discover-api", "complete", discovered));
 

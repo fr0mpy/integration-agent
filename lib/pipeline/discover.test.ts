@@ -479,4 +479,15 @@ describe('enrichDiscovery', () => {
     expect(enriched.endpoints[0].operationId).toBe('listItems')
     expect(enriched.endpoints[0].summary).toBe('List all available items in the store')
   })
+
+  it('resolves relative server URL against specUrl', async () => {
+    const spec = {
+      openapi: '3.0.0',
+      info: { title: 'Test', description: 'Test API' },
+      servers: [{ url: '/api/v3' }],
+      paths: {},
+    }
+    const result = await discoverEndpoints(spec, 'https://petstore3.swagger.io/api/v3/openapi.json')
+    expect(result.baseUrl).toBe('https://petstore3.swagger.io/api/v3')
+  })
 })
