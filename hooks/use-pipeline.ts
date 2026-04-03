@@ -389,6 +389,13 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
     setState((prev) => ({
       ...prev,
       stageStatus: { ...prev.stageStatus, [stage]: 'running' },
+      // Immediately flush old audit UI so stale results don't flash
+      ...(stage === 'audit-mcp' && {
+        auditFindings: [],
+        auditSummary: null,
+        auditBlocked: false,
+        error: null,
+      }),
     }))
   }, [])
 
