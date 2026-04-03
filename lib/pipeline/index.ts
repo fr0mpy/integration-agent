@@ -762,13 +762,11 @@ export async function synthesisePipeline(
 
     return config;
   } catch (err) {
-    console.error(
-      'Pipeline error:',
-      err instanceof Error ? err.message : 'unknown',
-    );
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    console.error('Pipeline error:', errorMsg);
     await emitEvent(
       createEvent(currentStage, 'failed', {
-        error: 'Pipeline failed. Please try again.',
+        error: `Deploy failed: ${errorMsg}`,
       }),
     );
     await failIntegration(integrationId);
