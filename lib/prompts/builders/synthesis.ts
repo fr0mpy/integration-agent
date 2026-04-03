@@ -5,27 +5,26 @@ export function buildSynthesisPrompt(discovered: DiscoveryResult): string {
   const lines: string[] = [
     `API: ${discovered.apiName}`,
     `Description: ${discovered.apiDescription || 'No description provided'}`,
-    `Base URL: ${discovered.baseUrl}`,
     `Auth method: ${discovered.authMethod}`,
     discovered.authHeader ? `Auth header: ${discovered.authHeader}` : '',
     `Endpoint count: ${discovered.endpointCount}`,
     '',
-    'Endpoints to convert into MCP tools:',
+    'Endpoints (reference each by its [index] number in your output):',
     '',
   ]
 
-  for (const endpoint of discovered.endpoints) {
-    lines.push(formatEndpoint(endpoint))
+  discovered.endpoints.forEach((endpoint, i) => {
+    lines.push(formatEndpoint(endpoint, i))
     lines.push('')
-  }
+  })
 
   return lines.filter((l) => l !== undefined).join('\n')
 }
 
 // Formats a single discovered endpoint as a human-readable block; one entry in the synthesis prompt's endpoint list.
-function formatEndpoint(ep: DiscoveredEndpoint): string {
+function formatEndpoint(ep: DiscoveredEndpoint, index: number): string {
   const parts: string[] = [
-    `${ep.method} ${ep.path}`,
+    `[${index}] ${ep.method} ${ep.path}`,
     ep.operationId ? `  operationId: ${ep.operationId}` : '',
     ep.summary ? `  summary: ${ep.summary}` : '',
     ep.description ? `  description: ${ep.description}` : '',

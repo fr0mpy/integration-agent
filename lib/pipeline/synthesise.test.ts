@@ -48,27 +48,20 @@ const mockDiscovery: DiscoveryResult = {
   warnings: [],
 }
 
-const validConfig = {
+// Index-based LLM output — no structural fields (httpPath, httpMethod, auth, baseUrl)
+const validLLMOutput = {
   tools: [
     {
+      endpointIndex: 0,
       name: 'list_pets',
       title: 'List Pets',
       description: 'Call this when you need to retrieve all available pets from the store. Returns an array of pet objects.',
-      inputSchema: {
-        type: 'object' as const,
-        properties: {
-          limit: { type: 'string' as const, description: 'Maximum number of pets to return' },
-        },
-        required: [],
+      propertyDescriptions: {
+        limit: 'Maximum number of pets to return at once',
       },
-      httpMethod: 'GET' as const,
-      httpPath: '/pets',
       authRequired: true,
     },
   ],
-  baseUrl: 'https://petstore.swagger.io/v2',
-  authMethod: 'apiKey' as const,
-  authHeader: 'api_key',
 }
 
 vi.mock('ai', () => ({
@@ -88,17 +81,46 @@ describe('synthesiseTools', () => {
     vi.clearAllMocks()
   })
 
-  it('returns config from successful generation', async () => {
+  it('assembles tool from spec — httpPath/httpMethod come from discovered endpoint', async () => {
     const { generateText } = await import('ai')
     const mockGenerateText = vi.mocked(generateText)
-    mockGenerateText.mockResolvedValueOnce({
-      output: validConfig,
-    } as never)
+    mockGenerateText.mockResolvedValueOnce({ output: validLLMOutput } as never)
 
     const result = await synthesiseTools(mockDiscovery)
     expect(result.tools).toHaveLength(1)
     expect(result.tools[0].name).toBe('list_pets')
+    // Structural fields come from spec, not LLM
+    expect(result.tools[0].httpMethod).toBe('GET')
+    expect(result.tools[0].httpPath).toBe('/pets')
+    expect(result.tools[0].inputSchema.properties.limit.type).toBe('number')  // integer → number
+    expect(result.tools[0].inputSchema.properties.limit.description).toBe('Maximum number of pets to return at once')
+  })
+
+  it('injects baseUrl, authMethod, authHeader from discovery — LLM has no say', async () => {
+    const { generateText } = await import('ai')
+    const mockGenerateText = vi.mocked(generateText)
+    mockGenerateText.mockResolvedValueOnce({ output: validLLMOutput } as never)
+
+    const result = await synthesiseTools(mockDiscovery)
     expect(result.baseUrl).toBe('https://petstore.swagger.io/v2')
+    expect(result.authMethod).toBe('apiKey')
+    expect(result.authHeader).toBe('api_key')
+  })
+
+  it('drops tool and retries when endpointIndex is out of bounds', async () => {
+    const { generateText } = await import('ai')
+    const mockGenerateText = vi.mocked(generateText)
+
+    const outOfBoundsOutput = {
+      tools: [{ ...validLLMOutput.tools[0], endpointIndex: 99 }],
+    }
+    mockGenerateText
+      .mockResolvedValueOnce({ output: outOfBoundsOutput } as never)
+      .mockResolvedValueOnce({ output: validLLMOutput } as never)
+
+    const result = await synthesiseTools(mockDiscovery)
+    expect(result.tools).toHaveLength(1)
+    expect(mockGenerateText).toHaveBeenCalledTimes(2)
   })
 
   it('retries on null output', async () => {
@@ -107,7 +129,7 @@ describe('synthesiseTools', () => {
 
     mockGenerateText
       .mockResolvedValueOnce({ output: null } as never)
-      .mockResolvedValueOnce({ output: validConfig } as never)
+      .mockResolvedValueOnce({ output: validLLMOutput } as never)
 
     const result = await synthesiseTools(mockDiscovery)
     expect(result.tools).toHaveLength(1)
@@ -120,13 +142,12 @@ describe('synthesiseTools', () => {
 
     mockGenerateText
       .mockRejectedValueOnce(new Error('Zod validation failed'))
-      .mockResolvedValueOnce({ output: validConfig } as never)
+      .mockResolvedValueOnce({ output: validLLMOutput } as never)
 
     const result = await synthesiseTools(mockDiscovery)
     expect(result.tools).toHaveLength(1)
     expect(mockGenerateText).toHaveBeenCalledTimes(2)
 
-    // Second call should include error context in prompt
     const secondCallPrompt = mockGenerateText.mock.calls[1][0].prompt as string
     expect(secondCallPrompt).toContain('Zod validation failed')
   })

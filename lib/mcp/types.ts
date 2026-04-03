@@ -47,6 +47,25 @@ export const MCPToolSchema = z.object({
   })).min(2).optional(),
 })
 
+// Index-based schema for LLM output.
+// The LLM outputs only what it uniquely knows: names, descriptions, endpoint references.
+// All structural fields (httpPath, httpMethod, param names/types, auth) are injected
+// from the spec after synthesis — the LLM never controls them.
+const MCPToolSynthesisItemSchema = z.object({
+  endpointIndex: z.number().int().min(0),  // index into discovered.endpoints[]
+  name: z.string().min(1).regex(/^[a-z][a-z0-9_]*$/),
+  title: z.string().min(3).max(60),
+  description: z.string().min(20).max(300),
+  propertyDescriptions: z.record(z.string()),  // LLM-authored descriptions for each param
+  authRequired: z.boolean(),
+  composedOf: z.array(z.number().int().min(0)).min(2).optional(),  // indexes for composed tools
+})
+
+export const MCPSynthesisOutputSchema = z.object({
+  tools: z.array(MCPToolSynthesisItemSchema).min(1).max(50),
+})
+
+// Full runtime config — all structural fields injected from the spec, never from LLM output
 export const MCPServerConfigSchema = z.object({
   tools: z.array(MCPToolSchema).min(1).max(50),
   baseUrl: z.string().url(),
@@ -55,4 +74,5 @@ export const MCPServerConfigSchema = z.object({
 })
 
 export type MCPToolDefinition = z.infer<typeof MCPToolSchema>
+export type MCPSynthesisOutput = z.infer<typeof MCPSynthesisOutputSchema>
 export type MCPServerConfig = z.infer<typeof MCPServerConfigSchema>

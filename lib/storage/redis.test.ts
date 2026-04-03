@@ -23,7 +23,7 @@ describe('redis storage', () => {
 
     const result = await mcpConfigCache.get('abc123')
     expect(result).toEqual(mockData)
-    expect(redis.get).toHaveBeenCalledWith('cache:v2:abc123')
+    expect(redis.get).toHaveBeenCalledWith('cache:v3:abc123')
   })
 
   it('mcpConfigCache.get returns null on miss', async () => {
