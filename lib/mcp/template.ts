@@ -43,6 +43,7 @@ function generateZodSchema(tool: MCPToolDefinition): string {
     if (!SAFE_IDENT.test(name)) {
       throw new Error(`Unsafe inputSchema property name: ${name}`)
     }
+
     const base = zodType(prop.type)
     const withDesc = `${base}.describe(${JSON.stringify(prop.description)})`
     const final = required.has(name) ? withDesc : `${withDesc}.optional()`
@@ -71,6 +72,7 @@ function generateHandler(tool: MCPToolDefinition): string {
 
   // Validate full httpPath to prevent template injection via backticks or ${...}
   const SAFE_PATH = /^[a-zA-Z0-9/_{}.\-]+$/
+
   if (!SAFE_PATH.test(httpPath)) {
     throw new Error(`Unsafe httpPath: ${httpPath}`)
   }
@@ -185,6 +187,7 @@ function generateComposedHandler(tool: MCPToolDefinition): string {
   for (const sub of composedOf) {
     // Validate full httpPath and path param names
     const SAFE_PATH = /^[a-zA-Z0-9/_{}.\-]+$/
+
     if (!SAFE_PATH.test(sub.httpPath)) {
       throw new Error(`Unsafe httpPath in composed sub-endpoint: ${sub.httpPath}`)
     }

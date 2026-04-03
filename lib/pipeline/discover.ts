@@ -266,11 +266,14 @@ export async function discoverEndpoints(spec: Record<string, unknown>, specUrl?:
 function extractBaseUrl(spec: Record<string, unknown>, specUrl?: string): string {
   // OpenAPI 3.x
   const servers = spec.servers as Array<{ url?: string }> | undefined
+
   if (servers?.[0]?.url) {
     const url = servers[0].url
+
     if (specUrl && !url.startsWith('http://') && !url.startsWith('https://')) {
       try { return new URL(url, specUrl).href } catch { /* fall through */ }
     }
+
     return url
   }
 

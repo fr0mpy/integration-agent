@@ -58,6 +58,7 @@ export async function synthesiseTools(
       }
 
       const tools = assembleMCPTools(output, discovered)
+
       if (tools.length === 0) {
         lastError = 'All tools were dropped — endpoint indexes did not match discovered endpoints'
         console.warn(`[Synthesis] Attempt ${attempt + 1}/${MAX_RETRIES + 1}: ${lastError}`)
@@ -118,6 +119,7 @@ function buildInputSchema(
 
   if (ep.requestBody?.schema) {
     const bodyRequired = new Set(ep.requestBody.schema.required)
+
     for (const [name, prop] of Object.entries(ep.requestBody.schema.properties)) {
       properties[name] = {
         type: normalizeType(prop.type),
@@ -168,6 +170,7 @@ function assembleMCPTools(
 
   for (const item of output.tools) {
     const ep = discovered.endpoints[item.endpointIndex]
+
     if (!ep) {
       console.warn(`[Synthesis] Dropping tool "${item.name}" — endpointIndex ${item.endpointIndex} out of bounds (${discovered.endpoints.length} endpoints)`)
       continue
@@ -181,15 +184,19 @@ function assembleMCPTools(
 
       for (const idx of item.composedOf) {
         const subEp = discovered.endpoints[idx]
+
         if (!subEp) {
           console.warn(`[Synthesis] Composed tool "${item.name}" sub-endpoint index ${idx} out of bounds — skipping`)
           continue
         }
+
         subEndpoints.push(subEp)
         const paramMapping: Record<string, string> = {}
+
         for (const p of subEp.parameters) {
           if (p.in === 'path' || p.in === 'query') paramMapping[p.name] = p.name
         }
+
         composedOf.push({
           httpMethod: subEp.method.toUpperCase() as MCPToolDefinition['httpMethod'],
           httpPath: subEp.path,

@@ -323,6 +323,7 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
               fallbackRef.current = true
               return { ...prev, connected: false }
             }
+
             return {
               ...prev,
               connected: false,
@@ -363,6 +364,7 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
         if (!res.ok) return
 
         const data = await res.json() as { status: string; mcp_url: string | null; deployment_id: string | null }
+
         if (data.mcp_url) {
           fallbackRef.current = false
           clearInterval(intervalId)

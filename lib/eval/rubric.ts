@@ -35,11 +35,13 @@ function scoreHallucination(config: MCPServerConfig, fixture: EvalFixture): Scor
 
   for (const tool of config.tools) {
     const key = `${tool.httpMethod}:${tool.httpPath}`
+
     if (!specEndpoints.has(key)) {
       // Check composed sub-endpoints
       if (tool.composedOf) {
         for (const sub of tool.composedOf) {
           const subKey = `${sub.httpMethod}:${sub.httpPath}`
+
           if (!specEndpoints.has(subKey) && !hallucinated.includes(tool.name)) {
             hallucinated.push(tool.name)
           }
@@ -74,8 +76,10 @@ function scoreCoverage(config: MCPServerConfig, fixture: EvalFixture): ScoreResu
   const specPaths = new Set(fixture.discovery.endpoints.map((ep) => ep.path))
 
   const toolPaths = new Set<string>()
+
   for (const tool of config.tools) {
     toolPaths.add(tool.httpPath)
+
     if (tool.composedOf) {
       for (const sub of tool.composedOf) {
         toolPaths.add(sub.httpPath)
@@ -223,6 +227,7 @@ function scoreSecurity(config: MCPServerConfig, fixture: EvalFixture): ScoreResu
 
   // Missing auth on writes
   const writeMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
+
   for (const tool of config.tools) {
     if (writeMethods.has(tool.httpMethod) && !tool.authRequired) {
       issues.push(`${tool.name}: ${tool.httpMethod} without auth`)
@@ -231,6 +236,7 @@ function scoreSecurity(config: MCPServerConfig, fixture: EvalFixture): ScoreResu
 
   // Excessive scope — more non-composed tools than spec endpoints
   const nonComposed = config.tools.filter((t) => !t.composedOf).length
+
   if (nonComposed > fixture.discovery.endpointCount) {
     issues.push(`${nonComposed} tools from ${fixture.discovery.endpointCount} endpoints (excess)`)
   }

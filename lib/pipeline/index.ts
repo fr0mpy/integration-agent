@@ -4,28 +4,28 @@ import {
   createHook,
   sleep,
   fetch as wfFetch,
-} from "workflow";
-import { revalidateTag } from "next/cache";
-import { neonConfig } from "@neondatabase/serverless";
+} from 'workflow';
+import { revalidateTag } from 'next/cache';
+import { neonConfig } from '@neondatabase/serverless';
 import {
   createEvent,
   type PipelineEvent,
   type ValidateEventData,
   type DeployEventData,
   type AuditEventData,
-} from "./events";
-import type { DiscoveryResult } from "./discover";
-import type { MCPServerConfig } from "../mcp/types";
-import type { SandboxResult } from "./sandbox-check";
-import type { AuditResult } from "./security-audit";
+} from './events';
+import type { DiscoveryResult } from './discover';
+import type { MCPServerConfig } from '../mcp/types';
+import type { SandboxResult } from './sandbox-check';
+import type { AuditResult } from './security-audit';
 import type {
   GitHubPRResult,
   MonorepoInfo,
   VercelDeployResult,
   VercelProjectResult,
   DeploymentInfo,
-} from "./deploy";
-import { config as appConfig } from "../config";
+} from './deploy';
+import { config as appConfig } from '../config';
 
 // WDK intercepts globalThis.fetch inside 'use step' / 'use workflow' functions and throws
 // if code tries to use it directly. Fix: configure Neon to use WDK's fetch, the officially
@@ -36,11 +36,11 @@ neonConfig.fetchFunction = wfFetch;
 // by the time those run, WDK has replaced globalThis.fetch with an error-throwing sentinel.
 // Force a static load here so deploy.ts's `const _fetch = globalThis.fetch` captures the
 // real fetch before any step executes.
-import "./deploy";
+import './deploy';
 
 // Writes a single typed event to the WDK SSE stream; every stage progress update the UI sees goes through here.
 async function emitEvent(event: PipelineEvent) {
-  "use step";
+  'use step';
   const writable = getWritable<PipelineEvent>();
   const writer = writable.getWriter();
   await writer.write(event);
@@ -51,8 +51,8 @@ async function emitEvent(event: PipelineEvent) {
 async function checkDiscoveryCache(
   specHash: string,
 ): Promise<DiscoveryResult | null> {
-  "use step";
-  const { discoveryCache } = await import("../storage/redis");
+  'use step';
+  const { discoveryCache } = await import('../storage/redis');
   return (await discoveryCache.get(specHash)) as DiscoveryResult | null;
 }
 
@@ -61,8 +61,8 @@ async function runDiscovery(
   spec: Record<string, unknown>,
   specUrl: string,
 ): Promise<DiscoveryResult> {
-  "use step";
-  const { discoverEndpoints, enrichDiscovery } = await import("./discover");
+  'use step';
+  const { discoverEndpoints, enrichDiscovery } = await import('./discover');
   const raw = await discoverEndpoints(spec, specUrl);
   return enrichDiscovery(raw);
 }
@@ -71,8 +71,8 @@ async function runDiscovery(
 async function runSynthesis(
   discovered: DiscoveryResult,
 ): Promise<MCPServerConfig> {
-  "use step";
-  const { synthesiseTools } = await import("./synthesise");
+  'use step';
+  const { synthesiseTools } = await import('./synthesise');
   return synthesiseTools(discovered);
 }
 
@@ -81,8 +81,8 @@ async function runSynthesisWithBuildErrors(
   discovered: DiscoveryResult,
   buildErrors: string,
 ): Promise<MCPServerConfig> {
-  "use step";
-  const { synthesiseTools } = await import("./synthesise");
+  'use step';
+  const { synthesiseTools } = await import('./synthesise');
   return synthesiseTools(discovered, buildErrors);
 }
 
@@ -90,15 +90,15 @@ async function runSynthesisWithBuildErrors(
 async function loadSourceOverride(
   integrationId: string,
 ): Promise<string | null> {
-  "use step";
-  const { sourceOverride } = await import("../storage/redis");
+  'use step';
+  const { sourceOverride } = await import('../storage/redis');
   return sourceOverride.get(integrationId);
 }
 
 // Deletes the source override after it has been consumed; prevents stale edits from re-applying on future re-audit triggers.
 async function clearSourceOverride(integrationId: string): Promise<void> {
-  "use step";
-  const { sourceOverride } = await import("../storage/redis");
+  'use step';
+  const { sourceOverride } = await import('../storage/redis');
   await sourceOverride.del(integrationId);
 }
 
@@ -107,8 +107,8 @@ async function runCodegen(config: MCPServerConfig): Promise<{
   files: Array<{ file: string; data: string }>;
   sourceCode: string;
 }> {
-  "use step";
-  const { bundleServer } = await import("../mcp/bundle");
+  'use step';
+  const { bundleServer } = await import('../mcp/bundle');
   return bundleServer(config);
 }
 
@@ -117,44 +117,44 @@ async function runValidateSandbox(
   bundle: { files: Array<{ file: string; data: string }>; sourceCode: string },
   config: MCPServerConfig,
 ) {
-  "use step";
-  const { runSandboxCheck } = await import("./sandbox-check");
+  'use step';
+  const { runSandboxCheck } = await import('./sandbox-check');
   return runSandboxCheck(bundle, config);
 }
 
 // Writes discovery result to Redis immediately after discovery runs; safe to cache before sandbox since it's deterministic.
 async function cacheDiscovery(specHash: string, discovered: DiscoveryResult) {
-  "use step";
-  const { discoveryCache } = await import("../storage/redis");
+  'use step';
+  const { discoveryCache } = await import('../storage/redis');
   await discoveryCache.set(specHash, discovered);
 }
 
 // Writes the full unfiltered MCP config to Redis before the build hook fires.
 // Stores all tools so cached config is never locked to a prior exclusion choice.
 async function cacheMcpConfig(specHash: string, config: MCPServerConfig) {
-  "use step";
-  const { mcpConfigCache } = await import("../storage/redis");
+  'use step';
+  const { mcpConfigCache } = await import('../storage/redis');
   await mcpConfigCache.set(specHash, config);
 }
 
 // Writes the URL→hash index after sandbox validation passes; acts as the commit signal for the fast path.
 async function commitSpecUrlIndex(specHash: string, specUrl: string) {
-  "use step";
-  const { specUrlIndex } = await import("../storage/redis");
+  'use step';
+  const { specUrlIndex } = await import('../storage/redis');
   await specUrlIndex.setHash(specUrl, specHash);
 }
 
 // Updates the integration row's status column in Postgres; drives the status badge in the UI.
 async function setIntegrationStatus(integrationId: string, status: string) {
-  "use step";
-  const { updateIntegration } = await import("../storage/neon");
+  'use step';
+  const { updateIntegration } = await import('../storage/neon');
   await updateIntegration(integrationId, { status });
 }
 
 // Saves sandbox ID, URL, and verified tool list to the integration row after the live MCP test passes.
 async function persistValidation(integrationId: string, result: SandboxResult) {
-  "use step";
-  const { updateIntegration } = await import("../storage/neon");
+  'use step';
+  const { updateIntegration } = await import('../storage/neon');
   await updateIntegration(integrationId, {
     sandbox_id: result.sandboxId,
     sandbox_url: result.sandboxUrl,
@@ -165,17 +165,17 @@ async function persistValidation(integrationId: string, result: SandboxResult) {
 
 // Marks the integration as FAILED in Postgres; called from the catch block and all early-exit paths.
 async function failIntegration(integrationId: string) {
-  "use step";
+  'use step';
   const { updateIntegration, INTEGRATION_STATUS } =
-    await import("../storage/neon");
+    await import('../storage/neon');
   await updateIntegration(integrationId, { status: INTEGRATION_STATUS.FAILED });
   revalidateTag('integrations', 'hours');
 }
 
 // Idempotently creates or retrieves the shared generated-mcps GitHub repo that all MCP servers are deployed from.
 async function runEnsureMonorepo(): Promise<MonorepoInfo> {
-  "use step";
-  const { ensureMonorepo } = await import("./deploy");
+  'use step';
+  const { ensureMonorepo } = await import('./deploy');
   return ensureMonorepo();
 }
 
@@ -187,8 +187,8 @@ async function runCreateGitHubPR(
   monorepo: MonorepoInfo,
   webhookUrl: string,
 ): Promise<GitHubPRResult> {
-  "use step";
-  const { createGitHubPR } = await import("./deploy");
+  'use step';
+  const { createGitHubPR } = await import('./deploy');
   return createGitHubPR(
     integrationName,
     integrationId,
@@ -204,8 +204,8 @@ async function checkPRStatus(
   repo: string,
   prNumber: number,
 ): Promise<{ state: string; merged: boolean }> {
-  "use step";
-  const { getOctokit } = await import("./deploy");
+  'use step';
+  const { getOctokit } = await import('./deploy');
   const octokit = getOctokit();
   const { data: pr } = await octokit.pulls.get({
     owner,
@@ -221,8 +221,8 @@ async function runDeleteGitHubWebhook(
   repo: string,
   webhookId: number,
 ): Promise<void> {
-  "use step";
-  const { deleteGitHubWebhook } = await import("./deploy");
+  'use step';
+  const { deleteGitHubWebhook } = await import('./deploy');
   await deleteGitHubWebhook(owner, repo, webhookId);
 }
 
@@ -231,8 +231,8 @@ async function persistPRInfo(
   integrationId: string,
   prResult: GitHubPRResult,
 ): Promise<void> {
-  "use step";
-  const { updateIntegration } = await import("../storage/neon");
+  'use step';
+  const { updateIntegration } = await import('../storage/neon');
   await updateIntegration(integrationId, {
     github_repo_url: prResult.repoUrl,
     github_pr_url: prResult.prUrl,
@@ -246,8 +246,8 @@ async function runCreateVercelProject(
   integrationId: string,
   integrationName: string,
 ): Promise<VercelProjectResult> {
-  "use step";
-  const { createVercelProject } = await import("./deploy");
+  'use step';
+  const { createVercelProject } = await import('./deploy');
   return createVercelProject(monorepo, integrationId, integrationName);
 }
 
@@ -255,8 +255,8 @@ async function runCreateVercelProject(
 async function runFindDeployment(
   vercelProjectId: string,
 ): Promise<DeploymentInfo | null> {
-  "use step";
-  const { findDeployment } = await import("./deploy");
+  'use step';
+  const { findDeployment } = await import('./deploy');
   return findDeployment(vercelProjectId);
 }
 
@@ -264,8 +264,8 @@ async function runFindDeployment(
 async function runPingDeployment(
   projectName: string,
 ): Promise<boolean> {
-  "use step";
-  const { pingDeployment } = await import("./deploy");
+  'use step';
+  const { pingDeployment } = await import('./deploy');
   return pingDeployment(projectName);
 }
 
@@ -275,9 +275,9 @@ async function persistDeployment(
   prResult: GitHubPRResult,
   vercelResult: VercelDeployResult,
 ) {
-  "use step";
+  'use step';
   const { updateIntegration, INTEGRATION_STATUS } =
-    await import("../storage/neon");
+    await import('../storage/neon');
   await updateIntegration(integrationId, {
     status: INTEGRATION_STATUS.LIVE,
     mcp_url: vercelResult.mcpUrl,
@@ -295,8 +295,8 @@ async function runSecurityAudit(
   discovered: DiscoveryResult,
   sourceCode: string,
 ): Promise<AuditResult> {
-  "use step";
-  const { performSecurityAudit } = await import("./security-audit");
+  'use step';
+  const { performSecurityAudit } = await import('./security-audit');
   return performSecurityAudit(config, discovered, sourceCode);
 }
 
@@ -310,43 +310,43 @@ export async function synthesisePipeline(
   specHash: string,
   specUrl: string,
 ) {
-  "use workflow";
+  'use workflow';
 
   // Track which stage is active so the catch block emits the correct failed event
   let currentStage:
-    | "discover-api"
-    | "build-mcp"
-    | "preview-mcp"
-    | "audit-mcp"
-    | "deploy-mcp" = "discover-api";
+    | 'discover-api'
+    | 'build-mcp'
+    | 'preview-mcp'
+    | 'audit-mcp'
+    | 'deploy-mcp' = 'discover-api';
 
   try {
     // Stage 1: Discovery + Enrichment
     // Fast path: skip AI enrichment call if we've already processed this spec before
-    await emitEvent(createEvent("discover-api", "running"));
+    await emitEvent(createEvent('discover-api', 'running'));
     const cachedDiscovery = await checkDiscoveryCache(specHash);
     const discovered = cachedDiscovery ?? (await runDiscovery(spec, specUrl));
     if (!cachedDiscovery) await cacheDiscovery(specHash, discovered);
-    await emitEvent(createEvent("discover-api", "complete", discovered));
+    await emitEvent(createEvent('discover-api', 'complete', discovered));
 
-    await setIntegrationStatus(integrationId, "synthesising");
+    await setIntegrationStatus(integrationId, 'synthesising');
 
     // Stage 2: Synthesis
-    currentStage = "build-mcp";
-    await emitEvent(createEvent("build-mcp", "running"));
+    currentStage = 'build-mcp';
+    await emitEvent(createEvent('build-mcp', 'running'));
     let config = await runSynthesis(discovered);
 
     for (const tool of config.tools) {
-      await emitEvent(createEvent("build-mcp", "tool_complete", tool));
+      await emitEvent(createEvent('build-mcp', 'tool_complete', tool));
     }
 
-    await emitEvent(createEvent("build-mcp", "complete", config));
+    await emitEvent(createEvent('build-mcp', 'complete', config));
 
     // Cache full unfiltered config before build hook — exclusions are in-memory only, never persisted
     await cacheMcpConfig(specHash, config);
 
     // ─── Pause: Wait for user to review tools and trigger build ───────────────
-    await emitEvent(createEvent("build-mcp", "awaiting-trigger"));
+    await emitEvent(createEvent('build-mcp', 'awaiting-trigger'));
 
     using buildHook = createHook<{ excludedTools: string[] }>({
       token: `build-trigger:${integrationId}`,
@@ -363,40 +363,40 @@ export async function synthesisePipeline(
     }
 
     // Silent structural pre-flight — not a visible stage
-    const { validateConfig } = await import("./validate");
+    const { validateConfig } = await import('./validate');
     const structural = validateConfig(config, discovered);
 
     if (!structural.valid) {
       const errorMsg = structural.errors
         .map((e) => `${e.tool}: ${e.message}`)
-        .join("; ");
+        .join('; ');
       await emitEvent(
-        createEvent("preview-mcp", "failed", {
+        createEvent('preview-mcp', 'failed', {
           errors: errorMsg,
         } satisfies ValidateEventData),
       );
       await failIntegration(integrationId);
-      await emitEvent(createEvent("preview-mcp", "done"));
+      await emitEvent(createEvent('preview-mcp', 'done'));
       return config;
     }
 
     // Codegen
-    currentStage = "preview-mcp";
+    currentStage = 'preview-mcp';
     let bundle = await runCodegen(config);
 
     // Stage 3: Validate — build + start + live MCP test
     await emitEvent(
-      createEvent("preview-mcp", "running", {
+      createEvent('preview-mcp', 'running', {
         sourceCode: bundle.sourceCode,
       } satisfies ValidateEventData),
     );
-    await setIntegrationStatus(integrationId, "validating");
+    await setIntegrationStatus(integrationId, 'validating');
 
     let sandboxResult = await runValidateSandbox(bundle, config);
 
     for (const log of sandboxResult.buildLogs) {
       await emitEvent(
-        createEvent("preview-mcp", "building", {
+        createEvent('preview-mcp', 'building', {
           buildLog: log,
         } satisfies ValidateEventData),
       );
@@ -405,27 +405,27 @@ export async function synthesisePipeline(
     // Sandbox build failed — retry synthesis once with build errors as context
     if (!sandboxResult.ok && sandboxResult.errors) {
       await emitEvent(
-        createEvent("preview-mcp", "retrying", {
+        createEvent('preview-mcp', 'retrying', {
           errors: sandboxResult.errors,
         } satisfies ValidateEventData),
       );
-      currentStage = "build-mcp";
-      await emitEvent(createEvent("build-mcp", "running"));
+      currentStage = 'build-mcp';
+      await emitEvent(createEvent('build-mcp', 'running'));
       config = await runSynthesisWithBuildErrors(
         discovered,
         sandboxResult.errors,
       );
 
       for (const tool of config.tools) {
-        await emitEvent(createEvent("build-mcp", "tool_complete", tool));
+        await emitEvent(createEvent('build-mcp', 'tool_complete', tool));
       }
 
-      await emitEvent(createEvent("build-mcp", "complete", config));
+      await emitEvent(createEvent('build-mcp', 'complete', config));
 
-      currentStage = "preview-mcp";
+      currentStage = 'preview-mcp';
       bundle = await runCodegen(config);
       await emitEvent(
-        createEvent("preview-mcp", "running", {
+        createEvent('preview-mcp', 'running', {
           sourceCode: bundle.sourceCode,
         } satisfies ValidateEventData),
       );
@@ -434,7 +434,7 @@ export async function synthesisePipeline(
 
       for (const log of sandboxResult.buildLogs) {
         await emitEvent(
-          createEvent("preview-mcp", "building", {
+          createEvent('preview-mcp', 'building', {
             buildLog: log,
           } satisfies ValidateEventData),
         );
@@ -443,17 +443,17 @@ export async function synthesisePipeline(
 
     if (!sandboxResult.ok) {
       await emitEvent(
-        createEvent("preview-mcp", "failed", {
-          error: sandboxResult.errors ?? "Sandbox build failed",
+        createEvent('preview-mcp', 'failed', {
+          error: sandboxResult.errors ?? 'Sandbox build failed',
         }),
       );
       await failIntegration(integrationId);
-      await emitEvent(createEvent("preview-mcp", "done"));
+      await emitEvent(createEvent('preview-mcp', 'done'));
       return config;
     }
 
     await emitEvent(
-      createEvent("preview-mcp", "complete", {
+      createEvent('preview-mcp', 'complete', {
         verifiedTools: sandboxResult.verifiedTools,
         toolCount: sandboxResult.verifiedTools.length,
         sandboxUrl: sandboxResult.sandboxUrl,
@@ -467,10 +467,10 @@ export async function synthesisePipeline(
     // Cache results only after validation passes
     await commitSpecUrlIndex(specHash, specUrl);
 
-    await emitEvent(createEvent("preview-mcp", "done"));
+    await emitEvent(createEvent('preview-mcp', 'done'));
 
     // ─── Pause: Wait for manual trigger (iterable — allows re-runs) ─────────
-    await emitEvent(createEvent("audit-mcp", "awaiting-trigger"));
+    await emitEvent(createEvent('audit-mcp', 'awaiting-trigger'));
 
     using auditHook = createHook<{ triggered: boolean }>({
       token: `audit-trigger:${integrationId}`,
@@ -485,7 +485,7 @@ export async function synthesisePipeline(
           ...bundle,
           sourceCode: editedSource,
           files: bundle.files.map((f) =>
-            f.file === "app/[transport]/route.ts"
+            f.file === 'app/[transport]/route.ts'
               ? { ...f, data: editedSource }
               : f,
           ),
@@ -495,8 +495,8 @@ export async function synthesisePipeline(
       }
 
       // ─── Stage 3.5: Security Audit ─────────────────────────────────────────
-      currentStage = "audit-mcp";
-      await emitEvent(createEvent("audit-mcp", "running"));
+      currentStage = 'audit-mcp';
+      await emitEvent(createEvent('audit-mcp', 'running'));
 
       const auditResult = await runSecurityAudit(
         config,
@@ -506,15 +506,15 @@ export async function synthesisePipeline(
 
       for (const auditFinding of auditResult.findings) {
         await emitEvent(
-          createEvent("audit-mcp", "finding", {
+          createEvent('audit-mcp', 'finding', {
             finding: auditFinding,
           } satisfies AuditEventData),
         );
       }
 
-      const auditStatus = auditResult.passed ? "complete" : "failed";
+      const auditStatus = auditResult.passed ? 'complete' : 'failed';
       await emitEvent(
-        createEvent("audit-mcp", auditStatus, {
+        createEvent('audit-mcp', auditStatus, {
           summary: auditResult.summary,
           blocked: !auditResult.passed,
         } satisfies AuditEventData),
@@ -523,23 +523,23 @@ export async function synthesisePipeline(
       if (auditResult.passed) break;
 
       // Audit failed — wait for user to re-trigger
-      await emitEvent(createEvent("audit-mcp", "awaiting-trigger"));
+      await emitEvent(createEvent('audit-mcp', 'awaiting-trigger'));
     }
 
     // ─── Stage 4: Deploy MCP ─────────────────────────────────────────────────
-    currentStage = "deploy-mcp";
+    currentStage = 'deploy-mcp';
     await emitEvent(
-      createEvent("deploy-mcp", "running", {
-        step: "create-repo",
+      createEvent('deploy-mcp', 'running', {
+        step: 'create-repo',
       } satisfies DeployEventData),
     );
-    await setIntegrationStatus(integrationId, "deploying");
+    await setIntegrationStatus(integrationId, 'deploying');
 
     const monorepo = await runEnsureMonorepo();
 
     await emitEvent(
-      createEvent("deploy-mcp", "running", {
-        step: "push-files",
+      createEvent('deploy-mcp', 'running', {
+        step: 'push-files',
         repoName: monorepo.repoName,
       } satisfies DeployEventData),
     );
@@ -571,29 +571,29 @@ export async function synthesisePipeline(
 
     for (const line of projectResult.setupLogs) {
       await emitEvent(
-        createEvent("deploy-mcp", "building", {
+        createEvent('deploy-mcp', 'building', {
           buildLog: line,
         } satisfies DeployEventData),
       );
     }
 
     await emitEvent(
-      createEvent("deploy-mcp", "running", {
-        step: "pr-open",
+      createEvent('deploy-mcp', 'running', {
+        step: 'pr-open',
         prUrl: prResult.prUrl,
         prTitle: prResult.prTitle,
         repoUrl: prResult.repoUrl,
         repoName: prResult.repoName,
-        prStatus: "open",
+        prStatus: 'open',
       } satisfies DeployEventData),
     );
 
     await emitEvent(
-      createEvent("deploy-mcp", "running", {
-        step: "await-merge",
+      createEvent('deploy-mcp', 'running', {
+        step: 'await-merge',
         prUrl: prResult.prUrl,
-        prStatus: "open",
-        waitMessage: "Waiting for PR to be merged...",
+        prStatus: 'open',
+        waitMessage: 'Waiting for PR to be merged...',
       } satisfies DeployEventData),
     );
 
@@ -617,7 +617,7 @@ export async function synthesisePipeline(
           prResult.prNumber,
         );
 
-        if (prStatus.state === "closed") {
+        if (prStatus.state === 'closed') {
           mergeResult = {
             merged: prStatus.merged,
             closedWithoutMerge: !prStatus.merged,
@@ -625,7 +625,7 @@ export async function synthesisePipeline(
           break;
         }
 
-        await sleep("30s");
+        await sleep('30s');
       }
     } else {
       type GHPREvent = {
@@ -637,12 +637,12 @@ export async function synthesisePipeline(
         const body = (await ghRequest.json()) as GHPREvent;
         if (body.pull_request?.number !== prResult.prNumber) continue;
 
-        if (body.action === "closed" && body.pull_request?.merged === true) {
+        if (body.action === 'closed' && body.pull_request?.merged === true) {
           mergeResult = { merged: true, closedWithoutMerge: false };
           break;
         }
 
-        if (body.action === "closed") {
+        if (body.action === 'closed') {
           mergeResult = { merged: false, closedWithoutMerge: true };
           break;
         }
@@ -657,29 +657,29 @@ export async function synthesisePipeline(
 
     if (!mergeResult.merged) {
       const reason = mergeResult.closedWithoutMerge
-        ? "PR was closed without merging."
-        : "Timed out waiting for PR merge (24h limit).";
+        ? 'PR was closed without merging.'
+        : 'Timed out waiting for PR merge (24h limit).';
       await emitEvent(
-        createEvent("deploy-mcp", "failed", {
+        createEvent('deploy-mcp', 'failed', {
           error: reason,
         } satisfies DeployEventData),
       );
       await failIntegration(integrationId);
-      await emitEvent(createEvent("deploy-mcp", "done"));
+      await emitEvent(createEvent('deploy-mcp', 'done'));
       return config;
     }
 
     await emitEvent(
-      createEvent("deploy-mcp", "running", {
-        step: "merged",
+      createEvent('deploy-mcp', 'running', {
+        step: 'merged',
         prUrl: prResult.prUrl,
-        prStatus: "merged",
+        prStatus: 'merged',
       } satisfies DeployEventData),
     );
 
     await emitEvent(
-      createEvent("deploy-mcp", "running", {
-        step: "deploying",
+      createEvent('deploy-mcp', 'running', {
+        step: 'deploying',
       } satisfies DeployEventData),
     );
 
@@ -688,8 +688,8 @@ export async function synthesisePipeline(
     // deployments due to API timing issues.
     const mcpUrl = `https://${projectResult.projectName}.vercel.app`;
     await emitEvent(
-      createEvent("deploy-mcp", "building", {
-        buildLog: "Waiting for deployment to go live...",
+      createEvent('deploy-mcp', 'building', {
+        buildLog: 'Waiting for deployment to go live...',
       } satisfies DeployEventData),
     );
 
@@ -701,23 +701,25 @@ export async function synthesisePipeline(
     while (!live) {
       if (Date.now() > pingDeadline) {
         throw new Error(
-          "Deployment did not go live within 10 minutes — check the Vercel dashboard.",
+          'Deployment did not go live within 10 minutes — check the Vercel dashboard.',
         );
       }
+
       await sleep(PING_POLL_MS);
       live = await runPingDeployment(projectResult.projectName);
+
       if (!live) {
         await emitEvent(
-          createEvent("deploy-mcp", "building", {
-            buildLog: "Still waiting for deployment...",
+          createEvent('deploy-mcp', 'building', {
+            buildLog: 'Still waiting for deployment...',
           } satisfies DeployEventData),
         );
       }
     }
 
     await emitEvent(
-      createEvent("deploy-mcp", "building", {
-        buildLog: "✓ Deployment READY",
+      createEvent('deploy-mcp', 'building', {
+        buildLog: '✓ Deployment READY',
       } satisfies DeployEventData),
     );
 
@@ -726,7 +728,7 @@ export async function synthesisePipeline(
 
     const vercelResult: VercelDeployResult = {
       vercelProjectId: projectResult.vercelProjectId,
-      deploymentId: deployment?.uid ?? "",
+      deploymentId: deployment?.uid ?? '',
       mcpUrl,
       buildLogs: [],
     };
@@ -734,8 +736,8 @@ export async function synthesisePipeline(
     await persistDeployment(integrationId, prResult, vercelResult);
 
     await emitEvent(
-      createEvent("deploy-mcp", "complete", {
-        step: "live",
+      createEvent('deploy-mcp', 'complete', {
+        step: 'live',
         mcpUrl: vercelResult.mcpUrl,
         deploymentId: vercelResult.deploymentId,
         prUrl: prResult.prUrl,
@@ -743,21 +745,21 @@ export async function synthesisePipeline(
       } satisfies DeployEventData),
     );
 
-    await emitEvent(createEvent("deploy-mcp", "done"));
+    await emitEvent(createEvent('deploy-mcp', 'done'));
 
     return config;
   } catch (err) {
     console.error(
-      "Pipeline error:",
-      err instanceof Error ? err.message : "unknown",
+      'Pipeline error:',
+      err instanceof Error ? err.message : 'unknown',
     );
     await emitEvent(
-      createEvent(currentStage, "failed", {
-        error: "Pipeline failed. Please try again.",
+      createEvent(currentStage, 'failed', {
+        error: 'Pipeline failed. Please try again.',
       }),
     );
     await failIntegration(integrationId);
-    await emitEvent(createEvent(currentStage, "done"));
+    await emitEvent(createEvent(currentStage, 'done'));
     throw err;
   }
 }
