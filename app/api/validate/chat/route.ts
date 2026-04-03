@@ -53,12 +53,18 @@ export async function POST(req: Request) {
       return errors.notFound('Integration not found.')
     }
 
-    const config = await mcpConfigCache.get(integration.spec_hash) as MCPServerConfig | null
+    // Try Redis first, fall back to Postgres (Redis writes are unreliable inside WDK steps)
+    let config = await mcpConfigCache.get(integration.spec_hash) as MCPServerConfig | null
 
-    console.log(`[v${BUILD_VERSION}] chat/route: config cached=${!!config} spec_hash=${integration.spec_hash?.slice(0, 12)} toolCount=${config?.tools?.length ?? 0}`)
+    if (!config && integration.config_json) {
+      console.log(`[v${BUILD_VERSION}] chat/route: Redis miss, using Postgres config_json`)
+      config = integration.config_json as MCPServerConfig
+    }
+
+    console.log(`[v${BUILD_VERSION}] chat/route: config found=${!!config} spec_hash=${integration.spec_hash?.slice(0, 12)} toolCount=${config?.tools?.length ?? 0}`)
 
     if (!config) {
-      console.error(`[v${BUILD_VERSION}] chat/route: CONFIG NOT CACHED — spec_hash=${integration.spec_hash} status=${integration.status}`)
+      console.error(`[v${BUILD_VERSION}] chat/route: CONFIG NOT FOUND — spec_hash=${integration.spec_hash} status=${integration.status}`)
       return errors.notFound('Config not cached.')
     }
 

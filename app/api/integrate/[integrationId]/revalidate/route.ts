@@ -54,8 +54,9 @@ export async function POST(
     return errors.badRequest(err instanceof ValidationError ? err.message : 'Invalid sandbox URL.')
   }
 
-  // Check Redis cache before hitting Neon — fast-fail if pipeline hasn't completed
-  const config = await mcpConfigCache.get(integration.spec_hash) as MCPServerConfig | null
+  // Try Redis first, fall back to Postgres (Redis writes unreliable inside WDK steps)
+  let config = await mcpConfigCache.get(integration.spec_hash) as MCPServerConfig | null
+  if (!config && integration.config_json) config = integration.config_json as MCPServerConfig
 
   if (!config) {
     return errors.notFound('Config not cached — pipeline may need to re-run.')

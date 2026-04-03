@@ -157,15 +157,22 @@ async function setIntegrationStatus(integrationId: string, status: string) {
   await updateIntegration(integrationId, { status });
 }
 
-// Saves verified tool list to the integration row after the live MCP test passes.
-async function persistValidation(integrationId: string, result: SandboxResult) {
+// Saves verified tool list and MCP config to the integration row after the live MCP test passes.
+// Config is persisted to Postgres because Redis writes are unreliable inside WDK steps
+// (Upstash Redis uses globalThis.fetch, which WDK intercepts and replays).
+async function persistValidation(
+  integrationId: string,
+  result: SandboxResult,
+  config: MCPServerConfig,
+) {
   'use step';
   const { BUILD_VERSION } = await import('../config');
-  console.log(`[v${BUILD_VERSION}] pipeline.persistValidation: integrationId=${integrationId} sandboxUrl=${result.sandboxUrl} sandboxId=${result.sandboxId} verifiedTools=${result.verifiedTools.length}`);
+  console.log(`[v${BUILD_VERSION}] pipeline.persistValidation: integrationId=${integrationId} sandboxUrl=${result.sandboxUrl} sandboxId=${result.sandboxId} verifiedTools=${result.verifiedTools.length} configTools=${config.tools.length}`);
   const { updateIntegration } = await import('../storage/neon');
   await updateIntegration(integrationId, {
     verified_tools: result.verifiedTools,
     validated_at: new Date().toISOString(),
+    config_json: config,
   });
 }
 
@@ -467,8 +474,8 @@ export async function synthesisePipeline(
       } satisfies ValidateEventData),
     );
 
-    // Persist validation proof to Neon
-    await persistValidation(integrationId, sandboxResult);
+    // Persist validation proof + MCP config to Neon (primary store; Redis is unreliable in WDK)
+    await persistValidation(integrationId, sandboxResult, config);
 
     // Cache results only after validation passes
     await commitSpecUrlIndex(specHash, specUrl);

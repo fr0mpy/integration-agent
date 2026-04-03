@@ -38,9 +38,15 @@ export async function POST(
     return errors.notFound('Integration not found.')
   }
 
-  const config = await mcpConfigCache.get(integration.spec_hash) as MCPServerConfig | null
+  // Try Redis first, fall back to Postgres (Redis writes are unreliable inside WDK steps)
+  let config = await mcpConfigCache.get(integration.spec_hash) as MCPServerConfig | null
 
-  console.log(`[v${BUILD_VERSION}] sandbox/route: config cached=${!!config} spec_hash=${integration.spec_hash?.slice(0, 12)} toolCount=${config?.tools?.length ?? 0}`)
+  if (!config && integration.config_json) {
+    console.log(`[v${BUILD_VERSION}] sandbox/route: Redis miss, using Postgres config_json`)
+    config = integration.config_json as MCPServerConfig
+  }
+
+  console.log(`[v${BUILD_VERSION}] sandbox/route: config found=${!!config} source=${config ? (integration.config_json ? 'postgres' : 'redis') : 'none'} spec_hash=${integration.spec_hash?.slice(0, 12)} toolCount=${config?.tools?.length ?? 0}`)
 
   if (!config) {
     // If the pipeline is still running (status=validating), the client likely hit this
@@ -48,7 +54,7 @@ export async function POST(
     if (integration.status === 'validating') {
       return errors.serviceUnavailable('Sandbox URL not yet persisted. Retry in a moment.')
     }
-    console.error(`[v${BUILD_VERSION}] sandbox/route: CONFIG NOT CACHED — spec_hash=${integration.spec_hash} status=${integration.status}`)
+    console.error(`[v${BUILD_VERSION}] sandbox/route: CONFIG NOT FOUND — spec_hash=${integration.spec_hash} status=${integration.status}`)
     return errors.notFound('Config not cached. Re-run the pipeline first.')
   }
 

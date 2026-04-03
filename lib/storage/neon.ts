@@ -73,6 +73,7 @@ export async function updateIntegration(
     github_repo_url?: string
     github_pr_url?: string
     github_repo_name?: string
+    config_json?: unknown
   }
 ): Promise<boolean> {
   if (!process.env.DATABASE_URL) {
@@ -112,6 +113,8 @@ export async function updateIntegration(
       queries.push(sql`UPDATE integrations SET github_pr_url = ${updates.github_pr_url} WHERE id = ${id}`)
     if (updates.github_repo_name !== undefined)
       queries.push(sql`UPDATE integrations SET github_repo_name = ${updates.github_repo_name} WHERE id = ${id}`)
+    if (updates.config_json !== undefined)
+      queries.push(sql`UPDATE integrations SET config_json = ${JSON.stringify(updates.config_json)}::jsonb WHERE id = ${id}`)
 
     if (queries.length > 0) await Promise.all(queries)
 
@@ -225,6 +228,9 @@ export const CREATE_TABLE_SQL = `
   ALTER TABLE integrations ADD COLUMN IF NOT EXISTS github_repo_url TEXT;
   ALTER TABLE integrations ADD COLUMN IF NOT EXISTS github_pr_url TEXT;
   ALTER TABLE integrations ADD COLUMN IF NOT EXISTS github_repo_name TEXT;
+
+  -- Migration: persist MCP config to Postgres (Redis unreliable inside WDK steps)
+  ALTER TABLE integrations ADD COLUMN IF NOT EXISTS config_json JSONB;
 
   CREATE TABLE IF NOT EXISTS credentials (
     integration_id TEXT PRIMARY KEY REFERENCES integrations(id),

@@ -22,7 +22,9 @@ export async function GET(
       return errors.notFound('Integration not found.')
     }
 
-    const config = await mcpConfigCache.get(integration.spec_hash) as MCPServerConfig | null
+    // Try Redis first, fall back to Postgres (Redis writes unreliable inside WDK steps)
+    let config = await mcpConfigCache.get(integration.spec_hash) as MCPServerConfig | null
+    if (!config && integration.config_json) config = integration.config_json as MCPServerConfig
 
     if (!config) {
       return errors.notFound('Config not cached yet.')

@@ -45,8 +45,10 @@ export async function GET(req: Request) {
 
     if (integration?.spec_hash) {
       const config = await mcpConfigCache.get(integration.spec_hash) as MCPServerConfig | null
-      diag.configCached = !!config
-      diag.configToolCount = config?.tools?.length ?? 0
+      const pgConfig = integration.config_json as MCPServerConfig | null
+      diag.configInRedis = !!config
+      diag.configInPostgres = !!pgConfig
+      diag.configToolCount = config?.tools?.length ?? pgConfig?.tools?.length ?? 0
       diag.cacheKey = `cache:v3:${integration.spec_hash}`
 
       // Also check if the raw key exists in Redis
@@ -69,7 +71,8 @@ export async function GET(req: Request) {
         const config = await mcpConfigCache.get(specHash)
         cached = config !== null
       }
-      items.push({ id: i.id, status: i.status, spec_hash: specHash?.slice(0, 12), configCached: cached })
+      const pgConfig = !!(full as Record<string, unknown>)?.config_json
+      items.push({ id: i.id, status: i.status, spec_hash: specHash?.slice(0, 12), configInRedis: cached, configInPostgres: pgConfig })
     }
     diag.integrations = items
   }
