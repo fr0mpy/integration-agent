@@ -26,10 +26,10 @@ async function main() {
       for (const run of page.data) {
         if (run.status === 'completed' || run.status === 'cancelled') continue
         try {
-          await world.events.create(run.id, { eventType: 'run_cancelled' })
+          await world.events.create(run.runId, { eventType: 'run_cancelled' })
           cancelled++
         } catch (err) {
-          console.warn(`Failed to cancel run ${run.id}:`, err instanceof Error ? err.message : String(err))
+          console.warn(`Failed to cancel run ${run.runId}:`, err instanceof Error ? err.message : String(err))
         }
       }
 
