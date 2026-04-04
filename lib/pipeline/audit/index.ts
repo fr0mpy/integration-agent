@@ -8,6 +8,7 @@ import type { MCPServerConfig } from '../../mcp/types'
 import type { DiscoveryResult } from '../discover'
 import type { AuditFinding, AuditSeverity } from '../events'
 import { BLOCKED_IP_RANGES } from '../../validation'
+import { config as appConfig } from '../../config'
 
 export interface AuditResult {
   passed: boolean
@@ -259,8 +260,12 @@ async function runAIAudit(
 ): Promise<AuditFinding[]> {
   const userPrompt = buildAuditPrompt(config, discovered, sourceCode, deterministicResults)
 
+  const tags = buildTags(discovered.apiName, 'audit')
+
   const result = await generateText({
     model: chatModel(),
+    temperature: appConfig.ai.audit.temperature,
+    maxOutputTokens: appConfig.ai.audit.maxOutputTokens,
     messages: [
       {
         role: 'user',
@@ -293,7 +298,8 @@ async function runAIAudit(
     },
     experimental_telemetry: {
       isEnabled: true,
-      metadata: { tags: buildTags(discovered.apiName, 'audit') },
+      functionId: 'audit',
+      metadata: { tags },
     },
   })
 

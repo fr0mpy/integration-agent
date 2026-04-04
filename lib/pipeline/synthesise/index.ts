@@ -50,8 +50,15 @@ export async function synthesiseTools(
         system: buildSystemPrompt(prompts.synthesis),
         prompt,
         output: Output.object({ schema: MCPSynthesisOutputSchema }),
+        temperature: config.ai.synthesis.temperature,
+        maxOutputTokens: config.ai.synthesis.maxOutputTokens,
         providerOptions: {
           gateway: { tags },
+        },
+        experimental_telemetry: {
+          isEnabled: true,
+          functionId: 'synthesis',
+          metadata: { tags },
         },
       })
 

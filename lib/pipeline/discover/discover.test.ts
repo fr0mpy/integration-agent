@@ -462,7 +462,7 @@ describe('enrichDiscovery', () => {
 
   it('merges LLM enrichment back into endpoints', async () => {
     mockGenerateText.mockResolvedValueOnce({
-      experimental_output: {
+      output: {
         selectedEndpoints: [
           { path: '/items', method: 'GET', operationId: 'listItems', summary: 'List all available items in the store' },
         ],

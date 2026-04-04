@@ -134,12 +134,20 @@ export async function enrichDiscovery(
   ].join('\n')
 
   try {
-    const { experimental_output: output } = await generateText({
+    const tags = buildTags(result.apiName, 'discover')
+    const { output } = await generateText({
       model: synthesisModel(),
       output: Output.object({ schema: EnrichmentSchema }),
       prompt,
+      temperature: config.ai.discovery.temperature,
+      maxOutputTokens: config.ai.discovery.maxOutputTokens,
       providerOptions: {
-        gateway: { tags: buildTags(result.apiName, 'discover') },
+        gateway: { tags },
+      },
+      experimental_telemetry: {
+        isEnabled: true,
+        functionId: 'discovery',
+        metadata: { tags },
       },
     })
 

@@ -10,6 +10,13 @@ export const config = {
     chat: 'anthropic/claude-sonnet-4.6',
   },
 
+  ai: {
+    synthesis: { temperature: 0, maxOutputTokens: 4096 },
+    discovery: { temperature: 0, maxOutputTokens: 2048 },
+    audit: { temperature: 0, maxOutputTokens: 4096 },
+    chat: { temperature: 0.3, maxOutputTokens: 8192 },
+  },
+
   deploy: {
     envKeys: {
       hmacSecret: 'HMAC_SECRET',
