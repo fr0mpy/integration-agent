@@ -1,10 +1,10 @@
 // Renders a single chat message — dispatches to reasoning blocks, text, step dividers, or tool call cards
-import type { UIMessage } from 'ai'
+import type { ChatAgentUIMessage } from '@/lib/ai/chat-agent'
 import { ReasoningBlock } from './ReasoningBlock'
 import { ChatToolCall } from './ChatToolCall'
 import type { ToolState } from './ChatToolCall'
 
-export function MessageBubble({ message }: { message: UIMessage }) {
+export function MessageBubble({ message }: { message: ChatAgentUIMessage }) {
   const isUser = message.role === 'user'
 
   if (isUser) {

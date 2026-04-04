@@ -1,6 +1,5 @@
-// Chat validation route — streams Sonnet responses with 3 tools (list, read, call) against the live sandbox MCP server
-import { convertToModelMessages, streamText, stepCountIs } from 'ai'
-import type { UIMessage } from 'ai'
+// Chat validation route — streams agent responses with 3 tools (list, read, call) against the live sandbox MCP server
+import { createAgentUIStreamResponse } from 'ai'
 import { z } from 'zod'
 import { getIntegration } from '@/lib/storage/neon'
 import { mcpConfigCache, sourceOverride } from '@/lib/storage/redis'
@@ -8,11 +7,9 @@ import { bundleServer } from '@/lib/mcp/bundle'
 import { validateSandboxUrl, ValidationError } from '@/lib/validation'
 import { errors } from '@/lib/api/response'
 import { BUILD_VERSION } from '@/lib/config'
-import { chatModel, buildTags } from '@/lib/ai/gateway'
 import { prompts, interpolate, buildSystemPrompt } from '@/lib/prompts'
 import type { MCPServerConfig } from '@/lib/mcp/types'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
+import { createChatAgent } from '@/lib/ai/chat-agent'
 
 export const maxDuration = 120
 
@@ -22,8 +19,8 @@ const bodySchema = z.object({
   sandboxUrl: z.string().url().startsWith('https://').nullish(),
   messages: z.array(z.object({
     role: z.enum(['user', 'assistant', 'system']),
-    parts: z.array(z.object({ type: z.string(), text: z.string().max(50_000).optional() }).passthrough()).max(50).optional(),
-    content: z.union([z.string().max(50_000), z.array(z.object({ type: z.string(), text: z.string().max(50_000).optional() }).passthrough()).max(50)]).optional(),
+    parts: z.array(z.object({ type: z.string(), text: z.string().max(50_000).optional() })).max(50).optional(),
+    content: z.union([z.string().max(50_000), z.array(z.object({ type: z.string(), text: z.string().max(50_000).optional() })).max(50)]).optional(),
   })).max(100),
 })
 
@@ -92,147 +89,16 @@ export async function POST(req: Request) {
       callToolDescription,
     })
 
-    // Stream Sonnet response with tool use — stepCountIs(10) caps reasoning loops to control cost
-    const result = streamText({
-      model: chatModel(),
-      providerOptions: {
-        gateway: { tags: buildTags(integration.name ?? integrationId, 'chat') },
-      },
-      messages: [
-        // Cache the static system context (tool list + source code) — same per integration
-        {
-          role: 'user',
-          content: [{
-            type: 'text',
-            text: system,
-            providerOptions: {
-              anthropic: { cacheControl: { type: 'ephemeral' } },
-            },
-          }],
-        },
-        { role: 'assistant', content: prompts.chat.snippets!.assistantAck },
-        ...await convertToModelMessages(messages as unknown as UIMessage[]),
-      ],
-      stopWhen: stepCountIs(10),
-      // Three tools let the model inspect and call the live sandbox MCP server during chat
-      tools: {
-        // Tool 1: List all available MCP tools — reads from live sandbox if available, else cached config
-        listTools: {
-          description: 'List all MCP tools available in this generated server with their names, titles, and descriptions',
-          inputSchema: z.object({}),
-          execute: async () => {
-            // Sandbox is the source of truth during preview — read tools fresh from the live MCP server
-            if (sandboxUrl) {
-              const client = new Client({ name: 'integration-agent-chat', version: '1.0.0' })
-              const transport = new StreamableHTTPClientTransport(new URL(`${sandboxUrl}/mcp`))
-
-              try {
-                await client.connect(transport)
-                const result = await client.listTools()
-                return result.tools.map((t) => ({
-                  name: t.name,
-                  description: t.description,
-                  inputSchema: t.inputSchema,
-                }))
-              } catch (err) {
-                return { error: `Sandbox unreachable: ${err instanceof Error ? err.message : String(err)}` }
-              } finally {
-                await client.close().catch((err) => console.warn('MCP client close failed:', err instanceof Error ? err.message : 'unknown'))
-              }
-            }
-
-            // No sandbox — fall back to cached config (deployed MCP reads from Redis)
-            return config.tools.map((t) => ({
-              name: t.name,
-              title: t.title,
-              description: t.description,
-              method: t.httpMethod,
-              path: t.httpPath,
-              authRequired: t.authRequired,
-            }))
-          },
-        },
-
-        // Tool 2: Read full definition of a single tool — input schema, HTTP mapping, auth requirements
-        readTool: {
-          description: 'Get the full definition of a specific MCP tool including its input schema, HTTP mapping, and auth requirements',
-          inputSchema: z.object({
-            toolName: z.string().describe('The exact tool name (e.g. get_pet_by_id)'),
-          }),
-          execute: async ({ toolName }) => {
-            // Sandbox is the source of truth during preview
-            if (sandboxUrl) {
-              const client = new Client({ name: 'integration-agent-chat', version: '1.0.0' })
-              const transport = new StreamableHTTPClientTransport(new URL(`${sandboxUrl}/mcp`))
-
-              try {
-                await client.connect(transport)
-                const result = await client.listTools()
-                const tool = result.tools.find((t) => t.name === toolName)
-
-                if (!tool) {
-                  const available = result.tools.map((t) => t.name).join(', ')
-                  return { error: `Tool "${toolName}" not found in sandbox. Available: ${available}` }
-                }
-
-                return { name: tool.name, description: tool.description, inputSchema: tool.inputSchema }
-              } catch (err) {
-                return { error: `Sandbox unreachable: ${err instanceof Error ? err.message : String(err)}` }
-              } finally {
-                await client.close().catch((err) => console.warn('MCP client close failed:', err instanceof Error ? err.message : 'unknown'))
-              }
-            }
-
-            // No sandbox — fall back to cached config
-            const tool = config.tools.find((t) => t.name === toolName)
-
-            if (!tool) {
-              return { error: `Tool "${toolName}" not found. Available: ${config.tools.map((t) => t.name).join(', ')}` }
-            }
-
-            return {
-              name: tool.name,
-              title: tool.title,
-              description: tool.description,
-              httpMethod: tool.httpMethod,
-              httpPath: tool.httpPath,
-              authRequired: tool.authRequired,
-              inputSchema: tool.inputSchema,
-            }
-          },
-        },
-
-        // Tool 3: Execute a tool against the live sandbox — real API calls, not mocks
-        callTool: {
-          description: 'Call a specific MCP tool against the live sandbox with provided arguments and return the real API response',
-          inputSchema: z.object({
-            toolName: z.string().describe('The exact tool name to call'),
-            args: z.record(z.unknown()).describe('Arguments to pass to the tool matching its input schema'),
-          }),
-          execute: async ({ toolName, args }) => {
-            if (!sandboxUrl) {
-              return { error: 'No sandbox URL available. The sandbox runs only during pipeline validation. Re-run the pipeline to get a live sandbox.' }
-            }
-
-            const client = new Client({ name: 'integration-agent-chat', version: '1.0.0' })
-            const transport = new StreamableHTTPClientTransport(new URL(`${sandboxUrl}/mcp`))
-
-            try {
-              await client.connect(transport)
-              const result = await client.callTool({ name: toolName, arguments: args })
-              return { ok: true, result: result.content }
-            } catch (err) {
-              return { ok: false, error: err instanceof Error ? err.message : String(err) }
-            } finally {
-              await client.close().catch((e: unknown) => console.warn('MCP client close failed:', e instanceof Error ? e.message : 'unknown'))
-            }
-          },
-        },
-      },
+    const agent = createChatAgent({
+      sandboxUrl: sandboxUrl ?? null,
+      mcpConfig: config,
+      integrationName: integration.name ?? integrationId,
+      system,
     })
 
-    // Stream response to the browser as UI message events
-    return result.toUIMessageStreamResponse({
+    return createAgentUIStreamResponse({
+      agent,
+      uiMessages: messages,
       onError: (err) => {
         console.error('Chat stream error:', err instanceof Error ? err.message : 'unknown')
         return 'An error occurred. Please try again.'

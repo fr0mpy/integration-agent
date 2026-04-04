@@ -6,6 +6,7 @@ import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport, lastAssistantMessageIsCompleteWithToolCalls } from 'ai'
 import { cn } from '@/lib/utils'
 import { MessageBubble } from './MessageBubble'
+import type { ChatAgentUIMessage } from '@/lib/ai/chat-agent'
 
 interface ChatPanelProps {
   integrationId: string
@@ -48,7 +49,7 @@ export function ChatPanel({ integrationId, sandboxUrl, validatedAt: _validatedAt
   )
   /* eslint-enable react-hooks/refs */
 
-  const { messages, sendMessage, status } = useChat({
+  const { messages, sendMessage, status } = useChat<ChatAgentUIMessage>({
     transport,
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
   })
