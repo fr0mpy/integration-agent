@@ -14,14 +14,12 @@ import { createChatAgent } from '@/lib/ai/chat-agent'
 export const maxDuration = 120
 
 // Validate shape of incoming chat messages — caps array sizes to bound token cost
+// Message structure validated by createAgentUIStreamResponse → validateUIMessages() internally.
+// We only validate integrationId/sandboxUrl here; z.any() preserves id, tool parts, etc. that the SDK requires.
 const bodySchema = z.object({
   integrationId: z.string().uuid(),
   sandboxUrl: z.string().url().startsWith('https://').nullish(),
-  messages: z.array(z.object({
-    role: z.enum(['user', 'assistant', 'system']),
-    parts: z.array(z.object({ type: z.string(), text: z.string().max(50_000).optional() })).max(50).optional(),
-    content: z.union([z.string().max(50_000), z.array(z.object({ type: z.string(), text: z.string().max(50_000).optional() })).max(50)]).optional(),
-  })).max(100),
+  messages: z.array(z.any()).max(100),
 })
 
 export async function POST(req: Request) {
