@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { generateText, Output } from 'ai'
-import { synthesisModel, buildTags } from '../ai/gateway'
-import { prompts, interpolate } from '../prompts'
+import { synthesisModel, buildTags } from '../../ai/gateway'
+import { prompts, interpolate } from '../../prompts'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -74,7 +74,7 @@ function groupEndpoints(endpoints: DiscoveredEndpoint[]): Record<string, Discove
 
 // ── AI Enrichment (Stage 1b) ──────────────────────────────────────────────────
 
-import { config } from '../config'
+import { config } from '../../config'
 
 const MAX_ENDPOINTS = config.discovery.maxEndpoints
 const MIN_SUMMARY_LENGTH = config.discovery.minSummaryLength

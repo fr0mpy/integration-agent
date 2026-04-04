@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { synthesiseTools } from './synthesise'
-import type { DiscoveryResult } from './discover'
+import { synthesiseTools } from '.'
+import type { DiscoveryResult } from '../discover'
 
 const mockDiscovery: DiscoveryResult = {
   apiName: 'Petstore',

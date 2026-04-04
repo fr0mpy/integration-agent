@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { discoverEndpoints, enrichDiscovery, needsEnrichment } from './discover'
+import { discoverEndpoints, enrichDiscovery, needsEnrichment } from '.'
 
 const mockGenerateText = vi.fn()
 

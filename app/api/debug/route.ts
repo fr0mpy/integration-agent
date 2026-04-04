@@ -11,6 +11,10 @@ import type { MCPServerConfig } from '@/lib/mcp/types'
  * and cache state for a given integration. Remove before production.
  */
 export async function GET(req: Request) {
+  if (process.env.NODE_ENV === 'production') {
+    return new Response('Not found', { status: 404 })
+  }
+
   const url = new URL(req.url)
   const id = url.searchParams.get('id')
 

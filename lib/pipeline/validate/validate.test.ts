@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { validateConfig } from './validate'
-import type { MCPServerConfig } from '../mcp/types'
-import type { DiscoveryResult } from './discover'
+import { validateConfig } from '.'
+import type { MCPServerConfig } from '../../mcp/types'
+import type { DiscoveryResult } from '../discover'
 
 const baseTool = {
   name: 'list_users',

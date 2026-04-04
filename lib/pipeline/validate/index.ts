@@ -1,5 +1,5 @@
-import type { MCPServerConfig } from '../mcp/types'
-import type { DiscoveryResult } from './discover'
+import type { MCPServerConfig } from '../../mcp/types'
+import type { DiscoveryResult } from '../discover'
 
 export interface ToolValidationError {
   tool: string

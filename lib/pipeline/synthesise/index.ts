@@ -1,10 +1,10 @@
 import { generateText, Output } from 'ai'
-import { synthesisModel, buildTags } from '../ai/gateway'
-import { prompts, buildSystemPrompt } from '../prompts'
-import { buildSynthesisPrompt } from '../prompts/builders/synthesis'
-import { MCPSynthesisOutputSchema, MCPServerConfigSchema, type MCPSynthesisOutput, type MCPToolDefinition, type MCPServerConfig } from '../mcp/types'
-import { config } from '../config'
-import type { DiscoveryResult, DiscoveredEndpoint } from './discover'
+import { synthesisModel, buildTags } from '../../ai/gateway'
+import { prompts, buildSystemPrompt } from '../../prompts'
+import { buildSynthesisPrompt } from '../../prompts/builders/synthesis'
+import { MCPSynthesisOutputSchema, MCPServerConfigSchema, type MCPSynthesisOutput, type MCPToolDefinition, type MCPServerConfig } from '../../mcp/types'
+import { config } from '../../config'
+import type { DiscoveryResult, DiscoveredEndpoint } from '../discover'
 
 const MAX_RETRIES = config.pipeline.synthesisMaxRetries
 

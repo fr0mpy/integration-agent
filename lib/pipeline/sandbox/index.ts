@@ -1,9 +1,9 @@
 import { Sandbox } from '@vercel/sandbox'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { BUILD_VERSION, config } from '../config'
-import type { BundleResult } from '../mcp/bundle'
-import type { MCPServerConfig } from '../mcp/types'
+import { BUILD_VERSION, config } from '../../config'
+import type { BundleResult } from '../../mcp/bundle'
+import type { MCPServerConfig } from '../../mcp/types'
 
 export interface SandboxResult {
   ok: boolean

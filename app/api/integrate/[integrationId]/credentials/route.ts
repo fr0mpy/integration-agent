@@ -38,20 +38,25 @@ export async function POST(
     return errors.notFound('Integration not found.')
   }
 
-  const raw = await req.json()
-  const parsed = postSchema.safeParse(raw)
+  try {
+    const raw = await req.json()
+    const parsed = postSchema.safeParse(raw)
 
-  if (!parsed.success) {
-    return errors.badRequest('Invalid request.')
-  }
+    if (!parsed.success) {
+      return errors.badRequest('Invalid request.')
+    }
 
-  // Wrap credential in JSON envelope and encrypt — stored as a single opaque blob in Postgres
-  const encryptedValue = encrypt(JSON.stringify({ apiKey: parsed.data.credential }))
-  const ok = await saveCredentials(integrationId, encryptedValue)
+    // Wrap credential in JSON envelope and encrypt — stored as a single opaque blob in Postgres
+    const encryptedValue = encrypt(JSON.stringify({ apiKey: parsed.data.credential }))
+    const ok = await saveCredentials(integrationId, encryptedValue)
 
-  if (!ok) {
+    if (!ok) {
+      return errors.internal()
+    }
+
+    return success({ ok: true })
+  } catch (err) {
+    console.error('Credential save error:', err instanceof Error ? err.message : 'unknown')
     return errors.internal()
   }
-
-  return success({ ok: true })
 }

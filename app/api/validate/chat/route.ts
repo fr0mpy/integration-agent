@@ -22,8 +22,8 @@ const bodySchema = z.object({
   sandboxUrl: z.string().url().startsWith('https://').nullish(),
   messages: z.array(z.object({
     role: z.enum(['user', 'assistant', 'system']),
-    parts: z.array(z.record(z.unknown())).max(50).optional(),
-    content: z.union([z.string().max(50_000), z.array(z.unknown()).max(50)]).optional(),
+    parts: z.array(z.object({ type: z.string(), text: z.string().max(50_000).optional() }).passthrough()).max(50).optional(),
+    content: z.union([z.string().max(50_000), z.array(z.object({ type: z.string(), text: z.string().max(50_000).optional() }).passthrough()).max(50)]).optional(),
   })).max(100),
 })
 
@@ -137,7 +137,7 @@ export async function POST(req: Request) {
               } catch (err) {
                 return { error: `Sandbox unreachable: ${err instanceof Error ? err.message : String(err)}` }
               } finally {
-                await client.close().catch(() => {})
+                await client.close().catch((err) => console.warn('MCP client close failed:', err instanceof Error ? err.message : 'unknown'))
               }
             }
 
@@ -179,7 +179,7 @@ export async function POST(req: Request) {
               } catch (err) {
                 return { error: `Sandbox unreachable: ${err instanceof Error ? err.message : String(err)}` }
               } finally {
-                await client.close().catch(() => {})
+                await client.close().catch((err) => console.warn('MCP client close failed:', err instanceof Error ? err.message : 'unknown'))
               }
             }
 

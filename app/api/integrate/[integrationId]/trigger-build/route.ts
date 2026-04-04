@@ -18,16 +18,16 @@ export async function POST(
     return errors.badRequest('Invalid integration ID')
   }
 
-  const body = await req.json()
-  const parsed = bodySchema.safeParse(body)
-
-  if (!parsed.success) {
-    return errors.badRequest('Invalid excludedTools')
-  }
-
-  const { excludedTools } = parsed.data
-
   try {
+    const body = await req.json()
+    const parsed = bodySchema.safeParse(body)
+
+    if (!parsed.success) {
+      return errors.badRequest('Invalid excludedTools')
+    }
+
+    const { excludedTools } = parsed.data
+
     await resumeHook(`build-trigger:${integrationId}`, { excludedTools })
     return success({ ok: true })
   } catch (err) {

@@ -1,13 +1,13 @@
 import { generateText } from 'ai'
 import { z } from 'zod'
 import { stepCountIs } from 'ai'
-import { chatModel, buildTags } from '../ai/gateway'
-import { prompts, buildSystemPrompt } from '../prompts'
-import { buildAuditPrompt } from '../prompts/builders/audit'
-import type { MCPServerConfig } from '../mcp/types'
-import type { DiscoveryResult } from './discover'
-import type { AuditFinding, AuditSeverity } from './events'
-import { BLOCKED_IP_RANGES } from '../validation'
+import { chatModel, buildTags } from '../../ai/gateway'
+import { prompts, buildSystemPrompt } from '../../prompts'
+import { buildAuditPrompt } from '../../prompts/builders/audit'
+import type { MCPServerConfig } from '../../mcp/types'
+import type { DiscoveryResult } from '../discover'
+import type { AuditFinding, AuditSeverity } from '../events'
+import { BLOCKED_IP_RANGES } from '../../validation'
 
 export interface AuditResult {
   passed: boolean

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { BundleResult } from '../mcp/bundle'
-import type { MCPServerConfig } from '../mcp/types'
+import type { BundleResult } from '../../mcp/bundle'
+import type { MCPServerConfig } from '../../mcp/types'
 
 const mockStop = vi.fn().mockResolvedValue(undefined)
 const mockWriteFiles = vi.fn().mockResolvedValue(undefined)
@@ -77,7 +77,7 @@ describe('runSandboxCheck', () => {
 
     mockListTools.mockResolvedValue({ tools: [{ name: 'list_customers' }] })
 
-    const { runSandboxCheck } = await import('./sandbox-check')
+    const { runSandboxCheck } = await import('.')
     const result = await runSandboxCheck(bundle, config)
 
     expect(result.ok).toBe(true)
@@ -89,7 +89,7 @@ describe('runSandboxCheck', () => {
   it('returns failed when npm install fails', async () => {
     mockRunCommand.mockResolvedValueOnce(makeFinished(1)) // npm install fails
 
-    const { runSandboxCheck } = await import('./sandbox-check')
+    const { runSandboxCheck } = await import('.')
     const result = await runSandboxCheck(bundle, config)
 
     expect(result.ok).toBe(false)
@@ -101,7 +101,7 @@ describe('runSandboxCheck', () => {
       .mockResolvedValueOnce(makeFinished(0)) // npm install ok
       .mockResolvedValueOnce(makeFinished(1)) // next build fails
 
-    const { runSandboxCheck } = await import('./sandbox-check')
+    const { runSandboxCheck } = await import('.')
     const result = await runSandboxCheck(bundle, config)
 
     expect(result.ok).toBe(false)
@@ -117,7 +117,7 @@ describe('runSandboxCheck', () => {
     // Server returns a different tool name
     mockListTools.mockResolvedValue({ tools: [{ name: 'wrong_tool_name' }] })
 
-    const { runSandboxCheck } = await import('./sandbox-check')
+    const { runSandboxCheck } = await import('.')
     const result = await runSandboxCheck(bundle, config)
 
     expect(result.ok).toBe(false)
@@ -128,7 +128,7 @@ describe('runSandboxCheck', () => {
   it('does not call stop when error thrown before failed flag is set', async () => {
     mockWriteFiles.mockRejectedValueOnce(new Error('disk full'))
 
-    const { runSandboxCheck } = await import('./sandbox-check')
+    const { runSandboxCheck } = await import('.')
     await expect(runSandboxCheck(bundle, config)).rejects.toThrow('disk full')
     // Error occurs before `failed` is set to true, so stop() is not called
     // (sandbox cleanup relies on the sandbox TTL in this edge case)
