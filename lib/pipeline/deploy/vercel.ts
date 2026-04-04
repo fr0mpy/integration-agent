@@ -220,27 +220,6 @@ export async function findDeployment(vercelProjectId: string): Promise<Deploymen
 }
 
 /**
- * Single API call: refresh the status of a specific deployment.
- */
-export async function checkDeploymentStatus(deploymentUid: string): Promise<DeploymentInfo> {
-  const token = process.env.VERCEL_TOKEN
-  if (!token) throw new Error('VERCEL_TOKEN is not set')
-  const vercel = new Vercel({ bearerToken: token })
-  const teamId = process.env.VERCEL_TEAM_ID
-
-  const refreshed = await vercel.deployments.getDeployment({
-    idOrUrl: deploymentUid,
-    ...(teamId ? { teamId } : {}),
-  })
-
-  return {
-    uid: deploymentUid,
-    readyState: refreshed.readyState ?? 'BUILDING',
-    url: refreshed.url ?? '',
-  }
-}
-
-/**
  * Ping the project's production URL to check if the deployment is live.
  * Returns true if the server responds with a non-5xx status.
  */

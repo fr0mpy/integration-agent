@@ -381,8 +381,8 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
             error: null,
           }))
         }
-      } catch {
-        // Silently retry on next interval
+      } catch (err) {
+        console.warn('Status polling error:', err instanceof Error ? err.message : 'unknown')
       }
     }, FALLBACK_POLL_MS)
 

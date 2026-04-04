@@ -10,7 +10,7 @@ if (!redisUrl || !redisToken) {
   console.error('Redis env vars not configured (UPSTASH_REDIS_REST_URL / KV_REST_API_URL)')
 }
 
-console.log(`[v${BUILD_VERSION}] Redis init: url=${redisUrl ? redisUrl.slice(0, 30) + '...' : 'MISSING'} token=${redisToken ? 'SET' : 'MISSING'}`)
+console.log(`[v${BUILD_VERSION}] Redis init: url=${redisUrl ? 'SET' : 'MISSING'} token=${redisToken ? 'SET' : 'MISSING'}`)
 
 export const redis = new Redis({
   url: redisUrl ?? '',

@@ -12,7 +12,11 @@ async function getCachedIntegrations() {
   'use cache'
   cacheLife('hours')
   cacheTag('integrations')
-  return listIntegrations(10)
+  try {
+    return await listIntegrations(10)
+  } catch {
+    return []
+  }
 }
 
 export default async function Home() {

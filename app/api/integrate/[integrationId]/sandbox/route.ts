@@ -158,8 +158,13 @@ export async function POST(
           await client.connect(transport)
           const result = await client.listTools()
           returnedTools = result.tools
+        } catch (err) {
+          failed = true
+          send({ type: 'error', message: `MCP verification failed: ${err instanceof Error ? err.message : 'unknown'}` })
+          controller.close()
+          return
         } finally {
-          await client.close()
+          await client.close().catch((err) => console.warn('MCP client close failed:', err instanceof Error ? err.message : 'unknown'))
         }
 
         const returnedNames = returnedTools.map((t) => t.name)
