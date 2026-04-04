@@ -33,10 +33,10 @@ Integration Agent automates the full pipeline. You give it an OpenAPI spec URL, 
 
 | # | Stage | What happens | Key file |
 |---|-------|-------------|----------|
-| 1 | **Discovery** | Parses the OpenAPI spec, extracts endpoints, parameters, auth, and schemas. If the spec has >50 endpoints or vague summaries, a Haiku call enriches and filters it. | `lib/pipeline/discover.ts` |
-| 2 | **Synthesis** | Claude Haiku generates MCP tool definitions optimised for LLM consumption. Structured output via `Output.object()` + Zod schema. Retries up to 3 times with error context. | `lib/pipeline/synthesise.ts` |
-| 3 | **Validation** | Generated TypeScript is written into a Vercel Sandbox (Firecracker VM), built with npm, started, and verified via live MCP `listTools()` calls. Build failures are fed back to synthesis for a retry. | `lib/pipeline/sandbox-check.ts` |
-| 4 | **Security Audit** | 7 deterministic checks (SSRF, path traversal, hallucinated endpoints, missing auth on writes) run first. Then Claude Sonnet with extended thinking runs 3 AI-assisted checks (parameter injection, sensitive data exposure, destructive operations). Any `fail` blocks deployment. | `lib/pipeline/security-audit.ts` |
+| 1 | **Discovery** | Parses the OpenAPI spec, extracts endpoints, parameters, auth, and schemas. If the spec has >50 endpoints or vague summaries, a Haiku call enriches and filters it. | `lib/pipeline/discover/` |
+| 2 | **Synthesis** | Claude Haiku generates MCP tool definitions optimised for LLM consumption. Structured output via `Output.object()` + Zod schema. Retries up to 3 times with error context. | `lib/pipeline/synthesise/` |
+| 3 | **Validation** | Generated TypeScript is written into a Vercel Sandbox (Firecracker VM), built with npm, started, and verified via live MCP `listTools()` calls. Build failures are fed back to synthesis for a retry. | `lib/pipeline/sandbox/` |
+| 4 | **Security Audit** | 7 deterministic checks (SSRF, path traversal, hallucinated endpoints, missing auth on writes) run first. Then Claude Sonnet with extended thinking runs 3 AI-assisted checks (parameter injection, sensitive data exposure, destructive operations). Any `fail` blocks deployment. | `lib/pipeline/audit/` |
 | 5 | **Deploy** | Generated files are pushed to a GitHub monorepo via the Git Trees API. A PR is opened, the workflow suspends until merge, then a Vercel project is created and polled until live. | `lib/pipeline/deploy/` |
 
 The pipeline is a [Workflow DevKit](https://vercel.com/docs/workflow) durable workflow — it survives crashes and restarts, pauses for user approval at two points (tool review before build, audit review before deploy), and resumes from the exact step that was interrupted.
@@ -70,9 +70,11 @@ Every tool here was chosen for a specific reason, not just familiarity.
 
 **Framework:** Next.js 16 (App Router, Turbopack, Fluid Compute), Tailwind CSS v4, shadcn/ui, Geist
 
-**AI:** [AI SDK v6](https://sdk.vercel.ai) (`generateText`, `streamText`, `Output.object()`, tool calling) → [AI Gateway](https://vercel.com/docs/ai-gateway) (OIDC, cost tags, failover)
-- Claude Haiku 4.5 — discovery enrichment + synthesis (fast, low-cost)
-- Claude Sonnet 4.6 — security audit (reasoning) + validation chat (tool calling)
+**AI:** [AI SDK v6](https://sdk.vercel.ai) (`generateText`, `streamText`, `ToolLoopAgent`, `Output.object()`, tool calling) → [AI Gateway](https://vercel.com/docs/ai-gateway) (OIDC, cost tags, failover)
+- Claude Haiku 4.5 — discovery enrichment + synthesis (fast, low-cost, `temperature: 0`)
+- Claude Sonnet 4.6 — security audit (reasoning) + validation chat (`ToolLoopAgent` with 3 MCP tools)
+
+**Observability:** [OpenTelemetry](https://opentelemetry.io) via `@vercel/otel` (`instrumentation.ts`) — AI SDK telemetry spans with per-stage `functionId` tags piped to Vercel Observability
 
 **Durable execution:** [Workflow DevKit](https://vercel.com/docs/workflow) — `'use workflow'`, `'use step'`, `createHook()`, `createWebhook()`
 
@@ -185,19 +187,25 @@ app/                        Next.js routes
 lib/
 ├── pipeline/               Core pipeline logic
 │   ├── index.ts            synthesisePipeline() — main durable workflow
-│   ├── discover.ts         Stage 1: OpenAPI parsing + AI enrichment
-│   ├── synthesise.ts       Stage 2: MCP tool generation
-│   ├── sandbox-check.ts    Stage 3: Sandbox build + MCP verification
-│   ├── security-audit.ts   Stage 4: Deterministic + AI security checks
+│   ├── steps.ts            28 'use step' wrappers
+│   ├── stages.ts           12 plain async stage orchestrators
+│   ├── discover/           Stage 1: OpenAPI parsing + AI enrichment
+│   ├── synthesise/         Stage 2: MCP tool generation
+│   ├── sandbox/            Stage 3: Sandbox build + MCP verification
+│   ├── audit/              Stage 4: Deterministic + AI security checks
 │   └── deploy/             Stage 5: GitHub PR + Vercel project creation
-├── ai/gateway.ts           synthesisModel(), chatModel(), buildTags()
+├── ai/
+│   ├── gateway.ts          synthesisModel(), chatModel(), buildTags()
+│   └── chat-agent.ts       ToolLoopAgent with 3 MCP tools for validation chat
 ├── mcp/                    Code generation + Zod schemas
 ├── prompts/                System prompts (JSON) + builders
 ├── storage/                Neon Postgres + Upstash Redis wrappers
 ├── eval/                   Synthesis evaluation harness
 ├── crypto.ts               AES-256-GCM encryption
 ├── validation.ts           UUID + SSRF + IP range validation
-└── config.ts               Model names, SSE config, env keys
+└── config.ts               Model names, AI generation params, SSE config, env keys
+
+instrumentation.ts          OpenTelemetry setup via @vercel/otel
 
 components/
 ├── pipeline/               Stage-specific UI panels
