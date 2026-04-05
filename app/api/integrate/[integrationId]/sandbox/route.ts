@@ -1,7 +1,7 @@
 import { Sandbox } from '@vercel/sandbox'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { getIntegration } from '@/lib/storage/neon'
+import { getIntegration, updateIntegration } from '@/lib/storage/neon'
 import { mcpConfigCache, sourceOverride } from '@/lib/storage/redis'
 import { bundleServer } from '@/lib/mcp/bundle'
 import { isValidUUID } from '@/lib/validation'
@@ -180,6 +180,9 @@ export async function POST(
 
         send({ type: 'log', message: `${returnedNames.length}/${expectedNames.length} tools verified` })
         send({ type: 'log', message: 'Sandbox live — isolated Firecracker VM' })
+
+        // Persist sandbox reference for hot-reload reconnection
+        await updateIntegration(integrationId, { sandbox_id: sandbox.sandboxId, sandbox_url: sandboxUrl })
 
         send({ type: 'ready', sandboxUrl, sandboxId: sandbox.sandboxId })
         controller.close()

@@ -24,6 +24,8 @@ type SandboxEvent = SandboxReadyEvent | SandboxLogEvent | SandboxErrorEvent
 export interface UseSandboxReturn {
   /** Live sandbox URL — null while spinning or if failed */
   sandboxUrl: string | null
+  /** Sandbox VM ID — null while spinning or if failed */
+  sandboxId: string | null
   /** True while a sandbox is being created */
   isSpinning: boolean
   /** Build log lines from the current spin-up */
@@ -48,6 +50,7 @@ export function useSandbox(
   active: boolean,
 ): UseSandboxReturn {
   const [sandboxUrl, setSandboxUrl] = useState<string | null>(initialSandboxUrl)
+  const [sandboxId, setSandboxId] = useState<string | null>(null)
   const [isSpinning, setIsSpinning] = useState(false)
   const [buildLog, setBuildLog] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -84,6 +87,7 @@ export function useSandbox(
           if (retry.ok) {
             const retryData = await retry.json() as SandboxReadyEvent
             setSandboxUrl(retryData.sandboxUrl)
+            setSandboxId(retryData.sandboxId)
             setBuildLog(['Sandbox reconnected after brief wait'])
             setIsSpinning(false)
             return
@@ -98,6 +102,7 @@ export function useSandbox(
       if (contentType.includes('application/json')) {
         const data = await res.json() as SandboxReadyEvent
         setSandboxUrl(data.sandboxUrl)
+        setSandboxId(data.sandboxId)
         setBuildLog(['Sandbox still active — reconnected'])
         setIsSpinning(false)
         return
@@ -128,6 +133,7 @@ export function useSandbox(
               setBuildLog((prev) => [...prev, event.message])
             } else if (event.type === 'ready') {
               setSandboxUrl(event.sandboxUrl)
+              setSandboxId(event.sandboxId)
             } else if (event.type === 'error') {
               setError(event.message)
             }
@@ -189,5 +195,5 @@ export function useSandbox(
     }
   }, [active, initialSandboxUrl, spinUp])
 
-  return { sandboxUrl, isSpinning, buildLog, error, spinUp }
+  return { sandboxUrl, sandboxId, isSpinning, buildLog, error, spinUp }
 }

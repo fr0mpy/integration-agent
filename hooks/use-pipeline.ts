@@ -25,6 +25,8 @@ export interface PipelineState {
   verifiedTools: string[]
   /** Live sandbox URL — available after validate completes */
   sandboxUrl: string | null
+  /** Sandbox VM ID — available after validate completes, used for hot-reload */
+  sandboxId: string | null
   error: string | null
   connected: boolean
   // audit-mcp stage
@@ -69,6 +71,7 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
     buildErrors: null,
     verifiedTools: [],
     sandboxUrl: null,
+    sandboxId: null,
     error: null,
     connected: false,
     auditFindings: [],
@@ -202,6 +205,7 @@ export function usePipeline(integrationId: string, cached = false): PipelineStat
           const d = event.data as ValidateEventData
           if (d.verifiedTools) next.verifiedTools = d.verifiedTools
           if (d.sandboxUrl) next.sandboxUrl = d.sandboxUrl
+          if (d.sandboxId) next.sandboxId = d.sandboxId
         } else if (event.stage === 'audit-mcp' && event.data) {
           const d = event.data as AuditEventData
           if (d.summary) next.auditSummary = d.summary

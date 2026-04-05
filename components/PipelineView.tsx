@@ -307,6 +307,7 @@ export function PipelineView({
           <ValidatePanel
             integrationId={integrationId}
             sandboxUrl={state.sandboxUrl ?? initialSandboxUrl}
+            sandboxId={state.sandboxId}
             sourceCode={state.sourceCode}
             buildLog={state.buildLog}
             verifiedTools={

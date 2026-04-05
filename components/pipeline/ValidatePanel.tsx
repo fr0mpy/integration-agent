@@ -1,7 +1,7 @@
 // Preview MCP tab — code viewer + chat panel + on-demand sandbox lifecycle + build log
 'use client'
 
-import { useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { Loader2 } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { CodeViewer } from './CodeViewer'
@@ -11,6 +11,7 @@ import { useSandbox } from '@/hooks/use-sandbox'
 interface ValidatePanelProps {
   integrationId: string
   sandboxUrl: string | null
+  sandboxId: string | null
   /** Live route.ts source from the validate:running event — overrides stale Redis cache */
   sourceCode: string | null
   buildLog: string[]
@@ -29,6 +30,7 @@ interface ValidatePanelProps {
 export function ValidatePanel({
   integrationId,
   sandboxUrl: pipelineSandboxUrl,
+  sandboxId: pipelineSandboxId,
   sourceCode,
   buildLog,
   verifiedTools,
@@ -47,15 +49,49 @@ export function ValidatePanel({
 
   // Prefer the pipeline sandbox while it's alive; fall back to on-demand spin-up
   const sandboxUrl = pipelineSandboxUrl ?? sandbox.sandboxUrl
+  const sandboxId = pipelineSandboxId ?? sandbox.sandboxId
 
-  // Persist edited route.ts to the source override store so chat and deploy use the user's version
+  const [reloading, setReloading] = useState(false)
+  const [reloadError, setReloadError] = useState<string | null>(null)
+
+  // Persist edited route.ts and hot-reload into the running sandbox
   const handleCodeSave = useCallback(async (source: string) => {
-    await fetch(`/api/integrate/${integrationId}/source`, {
+    // Save to Redis first (fast, always needed)
+    const saveRes = await fetch(`/api/integrate/${integrationId}/source`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ source }),
     })
-  }, [integrationId])
+
+    if (!saveRes.ok || !sandboxId) return
+
+    // Hot-reload into the running sandbox
+    setReloading(true)
+    setReloadError(null)
+
+    try {
+      const res = await fetch(`/api/integrate/${integrationId}/sandbox/reload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sandboxId }),
+      })
+
+      const data = await res.json() as { ok: boolean; error?: string; stderr?: string }
+
+      if (!data.ok) {
+        if (data.error === 'sandbox_expired') {
+          // Sandbox TTL expired — fall back to full respawn (picks up override)
+          sandbox.spinUp()
+        } else {
+          setReloadError(data.error === 'build_failed' ? (data.stderr ?? 'Build failed') : (data.error ?? 'Reload failed'))
+        }
+      }
+    } catch {
+      setReloadError('Reload request failed')
+    } finally {
+      setReloading(false)
+    }
+  }, [integrationId, sandboxId, sandbox])
 
   const handleCodeReset = useCallback(async () => {
     await fetch(`/api/integrate/${integrationId}/source`, { method: 'DELETE' })
@@ -81,6 +117,22 @@ export function ValidatePanel({
               {buildErrors}
             </pre>
           )}
+        </div>
+      )}
+
+      {/* Reload status */}
+      {reloading && (
+        <div className="rounded-lg border border-blue-500/30 bg-blue-500/5 p-3 text-sm">
+          <div className="flex items-center gap-2 font-medium text-blue-400">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Reloading sandbox…
+          </div>
+        </div>
+      )}
+      {reloadError && !reloading && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-sm">
+          <p className="text-xs font-medium text-red-400">Reload failed</p>
+          <pre className="mt-1 max-h-32 overflow-y-auto whitespace-pre-wrap font-mono text-xs text-zinc-400">{reloadError}</pre>
         </div>
       )}
 
