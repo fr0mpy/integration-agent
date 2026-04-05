@@ -4,6 +4,7 @@ import type { EvalFixture } from './fixtures'
 /**
  * Deterministic rubric for scoring synthesis output.
  * Each scorer checks one quality dimension and returns pass/warn/fail.
+ * 7 dimensions: hallucination, coverage, auth, schema, naming, tool definitions, security.
  */
 
 export type Score = 'pass' | 'warn' | 'fail'
@@ -212,7 +213,68 @@ function scoreNaming(config: MCPServerConfig): ScoreResult {
   }
 }
 
-// ── 6. Security (deterministic audit checks) ────────────────────────────────
+// ── 6. Tool Definition Quality ─────────────────────────────────────────────
+
+// Checks that tool descriptions, titles, and property descriptions are substantive
+// and distinct — these are the fields a downstream LLM relies on to select the right
+// tool and fill in the right arguments.
+function scoreToolDefinitions(config: MCPServerConfig): ScoreResult {
+  const issues: string[] = []
+
+  // Duplicate titles
+  const titles = config.tools.map((t) => t.title.toLowerCase())
+  const dupTitles = titles.filter((t, i) => titles.indexOf(t) !== i)
+
+  if (dupTitles.length > 0) {
+    issues.push(`duplicate titles: ${[...new Set(dupTitles)].join(', ')}`)
+  }
+
+  // Duplicate descriptions
+  const descs = config.tools.map((t) => t.description.toLowerCase())
+  const dupDescs = descs.filter((d, i) => descs.indexOf(d) !== i)
+
+  if (dupDescs.length > 0) {
+    issues.push(`${dupDescs.length} tool(s) share identical descriptions`)
+  }
+
+  for (const tool of config.tools) {
+    // Description that just restates the HTTP method + path is low quality
+    const pathWords = tool.httpPath.replace(/[/{}_-]/g, ' ').trim().toLowerCase()
+    const descLower = tool.description.toLowerCase()
+
+    if (descLower === `${tool.httpMethod.toLowerCase()} ${pathWords}`.trim()) {
+      issues.push(`${tool.name}: description just restates endpoint`)
+    }
+
+    // Missing property descriptions — every property in inputSchema should have one
+    const propNames = Object.keys(tool.inputSchema.properties)
+    const missingDescs = propNames.filter(
+      (p) => !tool.inputSchema.properties[p].description || tool.inputSchema.properties[p].description.length < 5,
+    )
+
+    if (missingDescs.length > 0) {
+      issues.push(`${tool.name}: weak/missing param descriptions for ${missingDescs.join(', ')}`)
+    }
+  }
+
+  if (issues.length === 0) {
+    return {
+      dimension: 'definitions',
+      label: 'Tool Definitions',
+      score: 'pass',
+      detail: `All ${config.tools.length} tools have distinct, substantive descriptions`,
+    }
+  }
+
+  return {
+    dimension: 'definitions',
+    label: 'Tool Definitions',
+    score: issues.some((i) => i.includes('duplicate') || i.includes('restates')) ? 'fail' : 'warn',
+    detail: issues.slice(0, 3).join('; '),
+  }
+}
+
+// ── 7. Security (deterministic audit checks) ────────────────────────────────
 
 // Runs deterministic security checks (path traversal, unauthenticated writes, excessive scope) on the synthesised config.
 function scoreSecurity(config: MCPServerConfig, fixture: EvalFixture): ScoreResult {
@@ -260,7 +322,7 @@ function scoreSecurity(config: MCPServerConfig, fixture: EvalFixture): ScoreResu
 
 // ── Main scorer ─────────────────────────────────────────────────────────────
 
-// Runs all six scorers against a fixture and returns an aggregated EvalResult; the overall score is fail if any scorer fails.
+// Runs all seven scorers against a fixture and returns an aggregated EvalResult; the overall score is fail if any scorer fails.
 export function scoreFixture(
   config: MCPServerConfig,
   fixture: EvalFixture,
@@ -272,6 +334,7 @@ export function scoreFixture(
     scoreAuthFidelity(config, fixture),
     scoreSchemaQuality(config, fixture),
     scoreNaming(config),
+    scoreToolDefinitions(config),
     scoreSecurity(config, fixture),
   ]
 

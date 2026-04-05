@@ -55,7 +55,7 @@ async function main(): Promise<void> {
   console.log(`\n${c.bold}${c.cyan}Synthesis Eval${c.reset}`)
   console.log(`${c.dim}Evaluates: prompt · model · schema constraints${c.reset}`)
   console.log(`${c.dim}Fixtures: ${ALL_FIXTURES.map((f) => f.name).join(', ')}${c.reset}`)
-  console.log(`${c.dim}Rubric: 6 deterministic dimensions, no LLM-as-judge${c.reset}\n`)
+  console.log(`${c.dim}Rubric: 7 deterministic dimensions, no LLM-as-judge${c.reset}\n`)
 
   const results: EvalResult[] = []
 
@@ -80,6 +80,7 @@ async function main(): Promise<void> {
           { dimension: 'auth', label: 'Auth Fidelity', score: 'fail', detail: 'Synthesis failed — no output to score' },
           { dimension: 'schema', label: 'Schema Quality', score: 'fail', detail: 'Synthesis failed — no output to score' },
           { dimension: 'naming', label: 'Naming', score: 'fail', detail: 'Synthesis failed — no output to score' },
+          { dimension: 'definitions', label: 'Tool Definitions', score: 'fail', detail: 'Synthesis failed — no output to score' },
           { dimension: 'security', label: 'Security', score: 'fail', detail: 'Synthesis failed — no output to score' },
         ],
         overall: 'fail',
