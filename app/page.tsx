@@ -6,6 +6,7 @@ import { listIntegrations, type IntegrationSummary } from '@/lib/storage/neon';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { RelativeTime } from '@/components/RelativeTime';
+import { ClearDataButton } from '@/components/ClearDataButton';
 
 // Cache integration list at the edge — revalidated hourly via cacheTag('integrations')
 async function getCachedIntegrations() {
@@ -54,6 +55,9 @@ export default async function Home() {
           </div>
         )}
 
+        <div className="text-center">
+          <ClearDataButton />
+        </div>
       </div>
     </main>
   );
