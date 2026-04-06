@@ -1,11 +1,6 @@
 {
   "version": "1.0.0",
   "steps": {
-    "node_modules/workflow/dist/stdlib.js": {
-      "fetch": {
-        "stepId": "step//workflow@4.2.0-beta.74//fetch"
-      }
-    },
     "node_modules/workflow/dist/internal/builtins.js": {
       "__builtin_response_array_buffer": {
         "stepId": "__builtin_response_array_buffer"
@@ -17,81 +12,86 @@
         "stepId": "__builtin_response_text"
       }
     },
-    "lib/pipeline/index.ts": {
+    "node_modules/workflow/dist/stdlib.js": {
+      "fetch": {
+        "stepId": "step//workflow@4.2.0-beta.74//fetch"
+      }
+    },
+    "lib/pipeline/steps.ts": {
       "cacheDiscovery": {
-        "stepId": "step//./lib/pipeline/index//cacheDiscovery"
+        "stepId": "step//./lib/pipeline/steps//cacheDiscovery"
       },
       "cacheMcpConfig": {
-        "stepId": "step//./lib/pipeline/index//cacheMcpConfig"
+        "stepId": "step//./lib/pipeline/steps//cacheMcpConfig"
       },
       "checkDiscoveryCache": {
-        "stepId": "step//./lib/pipeline/index//checkDiscoveryCache"
+        "stepId": "step//./lib/pipeline/steps//checkDiscoveryCache"
       },
       "checkPRStatus": {
-        "stepId": "step//./lib/pipeline/index//checkPRStatus"
+        "stepId": "step//./lib/pipeline/steps//checkPRStatus"
       },
       "clearSourceOverride": {
-        "stepId": "step//./lib/pipeline/index//clearSourceOverride"
+        "stepId": "step//./lib/pipeline/steps//clearSourceOverride"
       },
       "commitSpecUrlIndex": {
-        "stepId": "step//./lib/pipeline/index//commitSpecUrlIndex"
+        "stepId": "step//./lib/pipeline/steps//commitSpecUrlIndex"
       },
       "emitEvent": {
-        "stepId": "step//./lib/pipeline/index//emitEvent"
+        "stepId": "step//./lib/pipeline/steps//emitEvent"
       },
       "failIntegration": {
-        "stepId": "step//./lib/pipeline/index//failIntegration"
+        "stepId": "step//./lib/pipeline/steps//failIntegration"
       },
       "loadSourceOverride": {
-        "stepId": "step//./lib/pipeline/index//loadSourceOverride"
+        "stepId": "step//./lib/pipeline/steps//loadSourceOverride"
       },
       "persistDeployment": {
-        "stepId": "step//./lib/pipeline/index//persistDeployment"
+        "stepId": "step//./lib/pipeline/steps//persistDeployment"
       },
       "persistPRInfo": {
-        "stepId": "step//./lib/pipeline/index//persistPRInfo"
+        "stepId": "step//./lib/pipeline/steps//persistPRInfo"
       },
       "persistValidation": {
-        "stepId": "step//./lib/pipeline/index//persistValidation"
+        "stepId": "step//./lib/pipeline/steps//persistValidation"
       },
       "runCodegen": {
-        "stepId": "step//./lib/pipeline/index//runCodegen"
+        "stepId": "step//./lib/pipeline/steps//runCodegen"
       },
       "runCreateGitHubPR": {
-        "stepId": "step//./lib/pipeline/index//runCreateGitHubPR"
+        "stepId": "step//./lib/pipeline/steps//runCreateGitHubPR"
       },
       "runCreateVercelProject": {
-        "stepId": "step//./lib/pipeline/index//runCreateVercelProject"
+        "stepId": "step//./lib/pipeline/steps//runCreateVercelProject"
       },
       "runDeleteGitHubWebhook": {
-        "stepId": "step//./lib/pipeline/index//runDeleteGitHubWebhook"
+        "stepId": "step//./lib/pipeline/steps//runDeleteGitHubWebhook"
       },
       "runDiscovery": {
-        "stepId": "step//./lib/pipeline/index//runDiscovery"
+        "stepId": "step//./lib/pipeline/steps//runDiscovery"
       },
       "runEnsureMonorepo": {
-        "stepId": "step//./lib/pipeline/index//runEnsureMonorepo"
+        "stepId": "step//./lib/pipeline/steps//runEnsureMonorepo"
       },
       "runFindDeployment": {
-        "stepId": "step//./lib/pipeline/index//runFindDeployment"
+        "stepId": "step//./lib/pipeline/steps//runFindDeployment"
       },
       "runPingDeployment": {
-        "stepId": "step//./lib/pipeline/index//runPingDeployment"
+        "stepId": "step//./lib/pipeline/steps//runPingDeployment"
       },
       "runSecurityAudit": {
-        "stepId": "step//./lib/pipeline/index//runSecurityAudit"
+        "stepId": "step//./lib/pipeline/steps//runSecurityAudit"
       },
       "runSynthesis": {
-        "stepId": "step//./lib/pipeline/index//runSynthesis"
+        "stepId": "step//./lib/pipeline/steps//runSynthesis"
       },
       "runSynthesisWithBuildErrors": {
-        "stepId": "step//./lib/pipeline/index//runSynthesisWithBuildErrors"
+        "stepId": "step//./lib/pipeline/steps//runSynthesisWithBuildErrors"
       },
       "runValidateSandbox": {
-        "stepId": "step//./lib/pipeline/index//runValidateSandbox"
+        "stepId": "step//./lib/pipeline/steps//runValidateSandbox"
       },
       "setIntegrationStatus": {
-        "stepId": "step//./lib/pipeline/index//setIntegrationStatus"
+        "stepId": "step//./lib/pipeline/steps//setIntegrationStatus"
       }
     }
   },
