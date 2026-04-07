@@ -109,13 +109,14 @@ export async function synthesisePipeline(
     await persistValidationStage(integrationId, sandboxResult, config, specHash, specUrl);
 
     // ─── Pause: audit hook (iterable — allows re-runs) ──────────────────────
-    using auditHook = createHook<{ triggered: boolean }>({
+    using auditHook = createHook<{ triggered: boolean; override?: boolean }>({
       token: `audit-trigger:${integrationId}`,
     });
 
     await emitEvent(createEvent('audit-mcp', 'awaiting-trigger'));
 
-    for await (const _trigger of auditHook) {
+    for await (const trigger of auditHook) {
+      if (trigger.override) break;
       currentStage = 'audit-mcp';
       const auditIterResult = await runAuditIteration(
         integrationId, config, discovered, bundle,

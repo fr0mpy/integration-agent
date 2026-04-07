@@ -76,6 +76,7 @@ export function PipelineView({
   const state = usePipeline(integrationId, cached);
 
   const [excludedTools, setExcludedTools] = useState<Set<string>>(new Set());
+  const [overriding, setOverriding] = useState(false);
 
   const handleToolToggle = useCallback((name: string) => {
     setExcludedTools((prev) => {
@@ -137,6 +138,25 @@ export function PipelineView({
     },
     [router, searchParams],
   );
+
+  const handleAuditOverride = useCallback(async () => {
+    setOverriding(true)
+    try {
+      const res = await fetch(`/api/integrate/${integrationId}/trigger-audit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ override: true }),
+      })
+      if (res.ok) {
+        state.setStageRunning('deploy-mcp')
+        handleTabChange('deploy-mcp')
+      }
+    } catch {
+      // trigger-audit errors are surfaced via SSE
+    } finally {
+      setOverriding(false)
+    }
+  }, [integrationId, state, handleTabChange]);
 
   if (state.error && !state.discovery) {
     return (
@@ -373,6 +393,8 @@ export function PipelineView({
             summary={state.auditSummary}
             blocked={state.auditBlocked}
             status={state.stageStatus['audit-mcp']}
+            onOverride={state.auditBlocked ? handleAuditOverride : undefined}
+            overriding={overriding}
           />
         </StagePanel>
       </TabsContent>

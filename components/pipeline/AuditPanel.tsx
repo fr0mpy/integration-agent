@@ -9,6 +9,8 @@ interface AuditPanelProps {
   summary: { pass: number; warn: number; fail: number } | null
   blocked: boolean
   status: 'pending' | 'running' | 'complete' | 'failed'
+  onOverride?: () => void
+  overriding?: boolean
 }
 
 // Visual treatment per severity — fail (red) blocks deploy, warn (amber) is advisory, pass (green) is clear
@@ -33,7 +35,7 @@ const SEVERITY_STYLES = {
 // Sort critical issues to the top so the most important findings are seen first
 const SEVERITY_ORDER: Record<string, number> = { fail: 0, warn: 1, pass: 2 }
 
-export function AuditPanel({ findings, summary, blocked, status }: AuditPanelProps) {
+export function AuditPanel({ findings, summary, blocked, status, onOverride, overriding }: AuditPanelProps) {
   const sorted = [...findings].sort(
     (a, b) => (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9),
   )
@@ -48,12 +50,21 @@ export function AuditPanel({ findings, summary, blocked, status }: AuditPanelPro
               Deployment blocked — critical security issues found
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             <p className="text-sm text-red-300/80">
               {sorted.filter((f) => f.severity === 'fail').length} critical finding(s) must be
               resolved before this MCP server can be deployed. Re-run the pipeline with a
               corrected spec or adjusted configuration.
             </p>
+            {onOverride && (
+              <button
+                onClick={onOverride}
+                disabled={overriding}
+                className="inline-flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 disabled:opacity-50"
+              >
+                {overriding ? 'Overriding\u2026' : 'Override & Deploy Anyway'}
+              </button>
+            )}
           </CardContent>
         </Card>
       )}

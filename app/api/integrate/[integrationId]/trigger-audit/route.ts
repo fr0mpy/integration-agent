@@ -4,7 +4,7 @@ import { isValidUUID } from '@/lib/validation'
 import { success, errors } from '@/lib/api/response'
 
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ integrationId: string }> },
 ) {
   const { integrationId } = await params
@@ -13,8 +13,11 @@ export async function POST(
     return errors.badRequest('Invalid integration ID')
   }
 
+  const body = await req.json().catch(() => ({}))
+  const override = body.override === true
+
   try {
-    await resumeHook(`audit-trigger:${integrationId}`, { triggered: true })
+    await resumeHook(`audit-trigger:${integrationId}`, { triggered: true, override })
     return success({ ok: true })
   } catch (err) {
     console.error('Failed to resume audit hook:', err instanceof Error ? err.message : 'unknown')
